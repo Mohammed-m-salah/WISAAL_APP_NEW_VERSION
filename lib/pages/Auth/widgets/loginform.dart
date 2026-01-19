@@ -1,65 +1,98 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
 import 'package:wissal_app/controller/auth_controller/login_controller.dart';
 
 import '../../../widgets/custome_button.dart';
 
-class LoginForm extends StatelessWidget {
+class LoginForm extends StatefulWidget {
   const LoginForm({super.key});
 
   @override
+  State<LoginForm> createState() => _LoginFormState();
+}
+
+class _LoginFormState extends State<LoginForm> {
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  final LoginController loginController = Get.put(LoginController());
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    TextEditingController emailController = TextEditingController();
-    TextEditingController passwordController = TextEditingController();
-    LoginController loginController = Get.put(LoginController());
-    // LoginController()
-    return Center(
+    return SingleChildScrollView(
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             controller: emailController,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
             decoration: InputDecoration(
-              prefixIcon: Icon(Icons.alternate_email_outlined),
+              prefixIcon: const Icon(Icons.alternate_email_outlined),
               filled: true,
               hintText: 'Email',
-              fillColor: Theme.of(context).colorScheme.background,
+              fillColor: Theme.of(context).colorScheme.surface,
               border: OutlineInputBorder(
-                  borderSide: BorderSide.none,
-                  borderRadius: BorderRadius.circular(10)),
+                borderSide: BorderSide.none,
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
-          SizedBox(
-            height: 20,
-          ),
+          const SizedBox(height: 20),
           TextField(
             controller: passwordController,
+            obscureText: _obscurePassword,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _handleLogin(),
             decoration: InputDecoration(
-              prefixIcon: Icon(Icons.password),
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
+              ),
               filled: true,
               hintText: 'Password',
-              fillColor: Theme.of(context).colorScheme.background,
+              fillColor: Theme.of(context).colorScheme.surface,
               border: OutlineInputBorder(
-                  borderSide: BorderSide.none,
-                  borderRadius: BorderRadius.circular(10)),
+                borderSide: BorderSide.none,
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
-          SizedBox(
-            height: 20,
+          const SizedBox(height: 25),
+          Obx(
+            () => loginController.isLoading.value
+                ? const CircularProgressIndicator()
+                : CustomeButton(
+                    mytext: 'Login',
+                    myicon: Icons.login,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    onPressed: _handleLogin,
+                  ),
           ),
-          loginController.isLoading.value
-              ? CircularProgressIndicator()
-              : CustomeButton(
-                  mytext: 'Login',
-                  myicon: Icons.lock,
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  onPressed: () {
-                    // LoginController();
-                    loginController.Login(
-                        emailController.text, passwordController.text);
-                  }),
         ],
       ),
+    );
+  }
+
+  void _handleLogin() {
+    FocusScope.of(context).unfocus();
+    loginController.Login(
+      emailController.text.trim(),
+      passwordController.text,
     );
   }
 }

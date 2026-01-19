@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class ChatBubbel extends StatefulWidget {
@@ -10,6 +10,7 @@ class ChatBubbel extends StatefulWidget {
   final String time;
   final String status;
   final String imgUrl;
+  final List<String>? imageUrls; // قائمة الصور المجمعة
   final String audioUrl;
   final String senderName;
   final VoidCallback? onDelete;
@@ -22,6 +23,7 @@ class ChatBubbel extends StatefulWidget {
     required this.time,
     required this.status,
     required this.imgUrl,
+    this.imageUrls,
     required this.audioUrl,
     required this.senderName,
     this.onDelete,
@@ -89,187 +91,639 @@ class _ChatBubbelState extends State<ChatBubbel> {
     return '$minutes:$seconds';
   }
 
+  /// الحصول على قائمة الصور من imageUrls أو من imgUrl
+  List<String> _getImageUrls() {
+    if (widget.imageUrls != null && widget.imageUrls!.isNotEmpty) {
+      return widget.imageUrls!;
+    }
+    if (widget.imgUrl.trim().isEmpty) return [];
+    // محاولة تحليل كـ JSON array
+    if (widget.imgUrl.trim().startsWith('[')) {
+      try {
+        final decoded = jsonDecode(widget.imgUrl);
+        if (decoded is List) {
+          return List<String>.from(decoded.where((e) => e != null && e.toString().isNotEmpty));
+        }
+      } catch (_) {}
+    }
+    return [widget.imgUrl];
+  }
+
+  void _showFullScreenImage(BuildContext context, String imageUrl) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          extendBodyBehindAppBar: true,
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      color: Colors.white,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// عرض معرض الصور
+  void _showImageGallery(BuildContext context, List<String> images, int initialIndex) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => _ImageGalleryViewer(
+          images: images,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+
+  /// عرض صورة واحدة
+  Widget _buildSingleImage(BuildContext context, String imageUrl) {
+    return GestureDetector(
+      onTap: () => _showFullScreenImage(context, imageUrl),
+      child: Stack(
+        children: [
+          Image.network(
+            imageUrl,
+            width: double.infinity,
+            height: 220,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Container(
+                width: double.infinity,
+                height: 220,
+                color: Colors.grey.shade800,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    value: loadingProgress.expectedTotalBytes != null
+                        ? loadingProgress.cumulativeBytesLoaded /
+                            loadingProgress.expectedTotalBytes!
+                        : null,
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) => Container(
+              width: double.infinity,
+              height: 220,
+              color: Colors.grey.shade800,
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.broken_image, color: Colors.white54, size: 40),
+                  SizedBox(height: 8),
+                  Text(
+                    'فشل تحميل الصورة',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.fullscreen, color: Colors.white, size: 16),
+                  SizedBox(width: 4),
+                  Text(
+                    'View',
+                    style: TextStyle(color: Colors.white, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// عرض شبكة الصور المتعددة
+  Widget _buildImageGrid(BuildContext context, List<String> images) {
+    final imageCount = images.length;
+    final displayCount = imageCount > 4 ? 4 : imageCount;
+    final remainingCount = imageCount - 4;
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(18),
+        topRight: Radius.circular(18),
+      ),
+      child: SizedBox(
+        height: imageCount == 2 ? 150 : 220,
+        child: _buildGridLayout(context, images, displayCount, remainingCount),
+      ),
+    );
+  }
+
+  Widget _buildGridLayout(BuildContext context, List<String> images, int displayCount, int remainingCount) {
+    if (displayCount == 2) {
+      // صورتان جنبًا إلى جنب
+      return Row(
+        children: [
+          Expanded(child: _buildGridImage(context, images, 0)),
+          const SizedBox(width: 2),
+          Expanded(child: _buildGridImage(context, images, 1)),
+        ],
+      );
+    } else if (displayCount == 3) {
+      // صورة كبيرة على اليسار وصورتان صغيرتان على اليمين
+      return Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: _buildGridImage(context, images, 0),
+          ),
+          const SizedBox(width: 2),
+          Expanded(
+            child: Column(
+              children: [
+                Expanded(child: _buildGridImage(context, images, 1)),
+                const SizedBox(height: 2),
+                Expanded(child: _buildGridImage(context, images, 2)),
+              ],
+            ),
+          ),
+        ],
+      );
+    } else {
+      // 4 صور أو أكثر - شبكة 2x2
+      return Column(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(child: _buildGridImage(context, images, 0)),
+                const SizedBox(width: 2),
+                Expanded(child: _buildGridImage(context, images, 1)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(child: _buildGridImage(context, images, 2)),
+                const SizedBox(width: 2),
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _buildGridImage(context, images, 3),
+                      if (remainingCount > 0)
+                        GestureDetector(
+                          onTap: () => _showImageGallery(context, images, 3),
+                          child: Container(
+                            color: Colors.black.withOpacity(0.6),
+                            child: Center(
+                              child: Text(
+                                '+$remainingCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+  }
+
+  Widget _buildGridImage(BuildContext context, List<String> images, int index) {
+    return GestureDetector(
+      onTap: () => _showImageGallery(context, images, index),
+      child: Image.network(
+        images[index],
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            color: Colors.grey.shade800,
+            child: const Center(
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: Colors.grey.shade800,
+          child: const Icon(Icons.broken_image, color: Colors.white54),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bubbleColor = widget.isComming
-        ? Theme.of(context).colorScheme.primaryContainer
-        : Theme.of(context).colorScheme.primary;
+    // الرسائل المرسلة تظهر على اليمين، المستلمة على اليسار
+    final isMe = widget.isComming;
 
-    final textColor = Colors.white;
-    final hasImage = widget.imgUrl.trim().isNotEmpty;
+    final bubbleColor = isMe
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.primaryContainer;
+
+    final imageUrls = _getImageUrls();
+    final hasImage = imageUrls.isNotEmpty;
+    final hasMultipleImages = imageUrls.length > 1;
     final hasAudio = widget.audioUrl.trim().isNotEmpty;
     final hasText = widget.message.trim().isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
       child: Column(
-        crossAxisAlignment: widget.isComming
-            ? CrossAxisAlignment.start
-            : CrossAxisAlignment.end,
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           GestureDetector(
             onLongPress: widget.onDelete,
-            child: IntrinsicWidth(
-              child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.75,
-                  minWidth: 60,
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.75,
+                minWidth: hasAudio ? 200 : 80,
+              ),
+              decoration: BoxDecoration(
+                color: bubbleColor,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(18),
+                  topRight: const Radius.circular(18),
+                  bottomLeft: Radius.circular(isMe ? 18 : 4),
+                  bottomRight: Radius.circular(isMe ? 4 : 18),
                 ),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: bubbleColor,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(12),
-                    topRight: const Radius.circular(12),
-                    bottomLeft: Radius.circular(widget.isComming ? 0 : 12),
-                    bottomRight: Radius.circular(widget.isComming ? 12 : 0),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(18),
+                  topRight: const Radius.circular(18),
+                  bottomLeft: Radius.circular(isMe ? 18 : 4),
+                  bottomRight: Radius.circular(isMe ? 4 : 18),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 🧑‍🦱 Sender Info Row
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 10,
-                          backgroundColor:
-                              widget.isComming ? Colors.blueGrey : Colors.white,
-                          child: Text(
-                            widget.senderName.trim().isNotEmpty
-                                ? widget.senderName.characters.first
-                                    .toUpperCase()
-                                : '?',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: widget.isComming
-                                  ? Colors.white
-                                  : Colors.black,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            widget.senderName,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: widget.isComming
-                                  ? Colors.white
-                                  : Colors.white70,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
+                    // الصور - عرض مفرد أو شبكة
                     if (hasImage)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          widget.imgUrl,
-                          width: 180,
-                          height: 120,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Text(
-                            'Image not found',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                        ),
-                      ),
-                    if (hasImage)
-                      const SizedBox(
-                        height: 8,
-                      ),
+                      hasMultipleImages
+                          ? _buildImageGrid(context, imageUrls)
+                          : _buildSingleImage(context, imageUrls.first),
 
+                    // الرسالة الصوتية
                     if (hasAudio)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(
-                              _playerState == PlayerState.playing
-                                  ? Icons.pause
-                                  : Icons.play_arrow,
-                              color: Colors.white,
-                            ),
-                            onPressed: _togglePlayPause,
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                LinearProgressIndicator(
-                                  value: (_duration.inMilliseconds == 0)
-                                      ? 0
-                                      : _position.inMilliseconds /
-                                          _duration.inMilliseconds,
-                                  backgroundColor: Colors.white24,
-                                  color: Colors.white,
-                                  minHeight: 4,
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // زر التشغيل/الإيقاف
+                            GestureDetector(
+                              onTap: _togglePlayPause,
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  shape: BoxShape.circle,
                                 ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _formatDuration(_position),
-                                      style: const TextStyle(
-                                          color: Colors.white, fontSize: 12),
+                                child: Icon(
+                                  _playerState == PlayerState.playing
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+
+                            // شريط التقدم والمدة
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // شريط الموجة الصوتية
+                                  SizedBox(
+                                    height: 32,
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceEvenly,
+                                      children: List.generate(20, (index) {
+                                        final progress = _duration.inMilliseconds > 0
+                                            ? _position.inMilliseconds /
+                                                _duration.inMilliseconds
+                                            : 0.0;
+                                        final isActive = index / 20 <= progress;
+                                        final baseHeight = index % 3 == 0
+                                            ? 0.8
+                                            : index % 2 == 0
+                                                ? 0.5
+                                                : 0.3;
+                                        final waveHeight = 8 + 12 * baseHeight;
+
+                                        return Container(
+                                          width: 3,
+                                          height: waveHeight,
+                                          decoration: BoxDecoration(
+                                            color: isActive
+                                                ? Colors.white
+                                                : Colors.white.withOpacity(0.4),
+                                            borderRadius: BorderRadius.circular(2),
+                                          ),
+                                        );
+                                      }),
                                     ),
-                                    Text(
-                                      _formatDuration(_duration),
-                                      style: const TextStyle(
-                                          color: Colors.white, fontSize: 12),
-                                    ),
-                                  ],
-                                )
-                              ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  // الوقت
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _formatDuration(_position),
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.8),
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                      Text(
+                                        _formatDuration(_duration),
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.8),
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // النص
+                    if (hasText)
+                      Padding(
+                        padding: EdgeInsets.only(
+                          left: 14,
+                          right: 14,
+                          top: hasImage || hasAudio ? 8 : 12,
+                          bottom: 8,
+                        ),
+                        child: Text(
+                          widget.message,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+
+                    // الوقت وحالة القراءة
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        left: 14,
+                        right: 14,
+                        bottom: 8,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            widget.time,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withOpacity(0.6),
                             ),
                           ),
+                          if (isMe) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              widget.status == "Read"
+                                  ? Icons.done_all
+                                  : Icons.done,
+                              size: 16,
+                              color: widget.status == "Read"
+                                  ? Colors.blue.shade300
+                                  : Colors.white.withOpacity(0.6),
+                            ),
+                          ],
                         ],
                       ),
-                    if (hasAudio) const SizedBox(height: 8),
-
-                    if (hasText)
-                      Text(
-                        widget.message,
-                        style: TextStyle(color: textColor),
-                      ),
+                    ),
                   ],
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: widget.isComming
-                ? MainAxisAlignment.start
-                : MainAxisAlignment.end,
-            children: [
-              Text(
-                widget.time,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              if (!widget.isComming) ...[
-                const SizedBox(width: 4),
-                SvgPicture.asset(
-                  'assets/icons/Vector (2).svg',
-                  width: 18,
-                  colorFilter:
-                      const ColorFilter.mode(Colors.grey, BlendMode.srcIn),
-                ),
-              ],
-            ],
-          ),
         ],
       ),
+    );
+  }
+}
+
+/// معرض عرض الصور مع التمرير
+class _ImageGalleryViewer extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+
+  const _ImageGalleryViewer({
+    required this.images,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_ImageGalleryViewer> createState() => _ImageGalleryViewerState();
+}
+
+class _ImageGalleryViewerState extends State<_ImageGalleryViewer> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          '${_currentIndex + 1} / ${widget.images.length}',
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        centerTitle: true,
+      ),
+      extendBodyBehindAppBar: true,
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.images.length,
+        onPageChanged: (index) {
+          setState(() => _currentIndex = index);
+        },
+        itemBuilder: (context, index) {
+          return Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                widget.images[index],
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      color: Colors.white,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) => const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.broken_image, color: Colors.white54, size: 60),
+                    SizedBox(height: 16),
+                    Text(
+                      'فشل تحميل الصورة',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+      bottomNavigationBar: widget.images.length > 1
+          ? Container(
+              height: 80,
+              color: Colors.black.withOpacity(0.8),
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                itemCount: widget.images.length,
+                itemBuilder: (context, index) {
+                  final isSelected = index == _currentIndex;
+                  return GestureDetector(
+                    onTap: () {
+                      _pageController.animateToPage(
+                        index,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    child: Container(
+                      width: 64,
+                      height: 64,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: isSelected ? Colors.white : Colors.transparent,
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.network(
+                          widget.images[index],
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
+                            color: Colors.grey.shade800,
+                            child: const Icon(
+                              Icons.broken_image,
+                              color: Colors.white54,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            )
+          : null,
     );
   }
 }

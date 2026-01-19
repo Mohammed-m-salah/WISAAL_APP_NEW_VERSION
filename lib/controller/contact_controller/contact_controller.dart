@@ -16,7 +16,24 @@ class ContactController extends GetxController {
   void onInit() {
     super.onInit();
     getUserList();
-    getChatRoomList();
+    // استمع لتغييرات حالة المصادقة لتحميل غرف الدردشة عندما يكون المستخدم جاهزاً
+    _initChatRooms();
+  }
+
+  /// تحميل غرف الدردشة مع انتظار جاهزية المصادقة
+  Future<void> _initChatRooms() async {
+    // إذا كان المستخدم موجود مباشرة
+    if (auth.currentUser != null) {
+      await getChatRoomList();
+      return;
+    }
+
+    // انتظر تغيير حالة المصادقة
+    auth.onAuthStateChange.listen((data) {
+      if (data.session != null && data.event == AuthChangeEvent.signedIn) {
+        getChatRoomList();
+      }
+    });
   }
 
   /// جلب كل المستخدمين المسجلين
@@ -37,13 +54,15 @@ class ContactController extends GetxController {
 
   /// جلب غرف الدردشة الخاصة بالمستخدم الحالي مع بيانات الطرف الآخر
   Future<void> getChatRoomList() async {
+    final currentUser = auth.currentUser;
+    if (currentUser == null) {
+      // المستخدم غير جاهز بعد، سيتم الاستدعاء لاحقاً عند جاهزيته
+      return;
+    }
+
     isLoading.value = true;
 
     try {
-      final currentUser = auth.currentUser;
-      if (currentUser == null) {
-        throw Exception("❌ المستخدم غير مسجل الدخول");
-      }
 
       final userId = currentUser.id;
 
@@ -109,7 +128,12 @@ class ContactController extends GetxController {
   //       });
   // }
   Stream<List<UserModel>> getContacts() {
-    final currentUserId = auth.currentUser!.id;
+    final currentUser = auth.currentUser;
+    if (currentUser == null) {
+      // إرجاع Stream فارغ إذا لم يكن هناك مستخدم مسجل
+      return Stream.value([]);
+    }
+    final currentUserId = currentUser.id;
 
     return db
         .from('chats')

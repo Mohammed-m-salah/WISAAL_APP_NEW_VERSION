@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 class UserInfo extends StatelessWidget {
   final String profileImage;
@@ -61,68 +60,71 @@ class UserInfo extends StatelessWidget {
             Text(userEmail, style: Theme.of(context).textTheme.labelMedium),
             const SizedBox(height: 10),
             Padding(
-              padding: const EdgeInsets.all(15.0),
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  TextButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.call, color: Colors.green),
-                    label: const Text('Call',
-                        style: TextStyle(color: Colors.green)),
-                    style: TextButton.styleFrom(
-                      backgroundColor:
-                          Theme.of(context).colorScheme.onBackground,
-                      side: const BorderSide(color: Colors.green),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: TextButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.call, color: Colors.green, size: 18),
+                        label: const Text('Call',
+                            style: TextStyle(color: Colors.green, fontSize: 12)),
+                        style: TextButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.onBackground,
+                          side: const BorderSide(color: Colors.green),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 8),
+                        ),
                       ),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.video_call, color: Colors.orange),
-                    label: const Text('Video',
-                        style: TextStyle(color: Colors.orange)),
-                    style: TextButton.styleFrom(
-                      backgroundColor:
-                          Theme.of(context).colorScheme.onBackground,
-                      side: const BorderSide(color: Colors.orange),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: TextButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.video_call, color: Colors.orange, size: 18),
+                        label: const Text('Video',
+                            style: TextStyle(color: Colors.orange, fontSize: 12)),
+                        style: TextButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.onBackground,
+                          side: const BorderSide(color: Colors.orange),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 8),
+                        ),
                       ),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
                     ),
                   ),
-                  TextButton(
-                    onPressed: () {},
-                    style: TextButton.styleFrom(
-                      backgroundColor:
-                          Theme.of(context).colorScheme.onBackground,
-                      side: const BorderSide(color: Colors.blue),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: TextButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.message, color: Colors.blue, size: 18),
+                        label: const Text('Chat',
+                            style: TextStyle(color: Colors.blue, fontSize: 12)),
+                        style: TextButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.onBackground,
+                          side: const BorderSide(color: Colors.blue),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 8),
+                        ),
                       ),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SvgPicture.asset(
-                          'assets/icons/Vector.svg',
-                          color: Theme.of(context).colorScheme.primary,
-                          height: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Call',
-                          style: TextStyle(color: Colors.blue),
-                        ),
-                      ],
                     ),
                   ),
                 ],

@@ -179,9 +179,11 @@ class _GroupChatState extends State<GroupChat> {
                   },
                 ),
                 Obx(() {
-                  final selectedImage = chatcontroller.selectedImagePath.value;
-                  if (selectedImage.isEmpty ||
-                      !File(selectedImage).existsSync()) {
+                  if (chatcontroller.selectedImagePaths.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  final selectedImage = chatcontroller.selectedImagePaths.first;
+                  if (!File(selectedImage).existsSync()) {
                     return const SizedBox.shrink();
                   }
 
@@ -206,7 +208,7 @@ class _GroupChatState extends State<GroupChat> {
                         child: IconButton(
                           icon: const Icon(Icons.close, color: Colors.red),
                           onPressed: () {
-                            chatcontroller.selectedImagePath.value = "";
+                            chatcontroller.selectedImagePaths.clear();
                           },
                         ),
                       ),
@@ -262,14 +264,14 @@ class _GroupChatState extends State<GroupChat> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: chatcontroller.selectedImagePath.value.isEmpty
+                        icon: chatcontroller.selectedImagePaths.isEmpty
                             ? SvgPicture.asset(
                                 'assets/icons/mynaui_image.svg',
                                 height: 25,
                               )
                             : const Icon(Icons.close, color: Colors.amber),
                         onPressed: () async {
-                          if (chatcontroller.selectedImagePath.value.isEmpty) {
+                          if (chatcontroller.selectedImagePaths.isEmpty) {
                             showModalBottomSheet(
                               context: context,
                               shape: const RoundedRectangleBorder(
@@ -287,8 +289,7 @@ class _GroupChatState extends State<GroupChat> {
                                       final path = await imagePickerController
                                           .pickImageFromGallery();
                                       if (path.isNotEmpty) {
-                                        chatcontroller.selectedImagePath.value =
-                                            path;
+                                        chatcontroller.selectedImagePaths.add(path);
                                       }
                                     },
                                   ),
@@ -300,8 +301,7 @@ class _GroupChatState extends State<GroupChat> {
                                       final path = await imagePickerController
                                           .pickImageFromCamera();
                                       if (path.isNotEmpty) {
-                                        chatcontroller.selectedImagePath.value =
-                                            path;
+                                        chatcontroller.selectedImagePaths.add(path);
                                         print("📷 صورة الكاميرا: $path");
                                       }
                                     },
@@ -310,7 +310,7 @@ class _GroupChatState extends State<GroupChat> {
                               ),
                             );
                           } else {
-                            chatcontroller.selectedImagePath.value = "";
+                            chatcontroller.selectedImagePaths.clear();
                           }
                         },
                       ),
@@ -330,8 +330,9 @@ class _GroupChatState extends State<GroupChat> {
                             return InkWell(
                               onTap: () {
                                 final text = messageController.text.trim();
-                                final img =
-                                    chatcontroller.selectedImagePath.value;
+                                final img = chatcontroller.selectedImagePaths.isNotEmpty
+                                    ? chatcontroller.selectedImagePaths.first
+                                    : '';
 
                                 if (text.isNotEmpty || img.isNotEmpty) {
                                   groupController.selectedImagePath.value = img;
@@ -340,7 +341,7 @@ class _GroupChatState extends State<GroupChat> {
                                     text,
                                   );
                                   messageController.clear();
-                                  chatcontroller.selectedImagePath.value = "";
+                                  chatcontroller.selectedImagePaths.clear();
                                   chatcontroller.isTyping.value = false;
                                 } else {
                                   Get.snackbar(

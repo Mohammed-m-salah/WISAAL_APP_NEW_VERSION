@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wissal_app/controller/profile_controller/profile_controller.dart';
@@ -61,7 +60,7 @@ class GroupController extends GetxController {
     }
 
     try {
-      final groupId = uuid.v4(); // هذا صحيح
+      final groupId = uuid.v4();
       String? imgUrl;
 
       if (imagePath.isNotEmpty && File(imagePath).existsSync()) {
@@ -87,7 +86,7 @@ class GroupController extends GetxController {
         members: groupMembers.toList(),
         createdAt: now,
         createdBy: currentUserId,
-        timestamp: now, // بدل إرسال الوقت فقط، أرسل التاريخ الكامل
+        timestamp: now,
       );
 
       final response =

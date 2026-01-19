@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:wissal_app/pages/Auth/widgets/loginform.dart';
 import 'package:wissal_app/pages/Auth/widgets/signupform.dart';
-import 'package:wissal_app/widgets/custome_button.dart';
 
 class AuthPageBody extends StatefulWidget {
   const AuthPageBody({super.key});
@@ -11,15 +10,37 @@ class AuthPageBody extends StatefulWidget {
 }
 
 class _AuthPageBodyState extends State<AuthPageBody> {
-  bool isLogin = true;
+  late PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: 0);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _goToPage(int page) {
+    _pageController.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 100),
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
         width: 335,
+        height: _currentPage == 0 ? 320 : 420,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
@@ -33,31 +54,35 @@ class _AuthPageBodyState extends State<AuthPageBody> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildTab(
-                    title: "Login",
-                    selected: isLogin,
-                    onTap: () {
-                      setState(() => isLogin = true);
-                    }),
+                  title: "Login",
+                  selected: _currentPage == 0,
+                  onTap: () => _goToPage(0),
+                ),
                 _buildTab(
-                    title: "Signup",
-                    selected: !isLogin,
-                    onTap: () {
-                      setState(() => isLogin = false);
-                    }),
+                  title: "Signup",
+                  selected: _currentPage == 1,
+                  onTap: () => _goToPage(1),
+                ),
               ],
             ),
 
             const SizedBox(height: 30),
 
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 100),
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SizeTransition(sizeFactor: animation, child: child),
+            // PageView for smooth swipe animation
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentPage = index;
+                  });
+                },
+                physics: const BouncingScrollPhysics(),
+                children: const [
+                  LoginForm(key: ValueKey("login")),
+                  SignupForm(key: ValueKey("signup")),
+                ],
               ),
-              child: isLogin
-                  ? const LoginForm(key: ValueKey("login"))
-                  : const SignupForm(key: ValueKey("signup")),
             ),
           ],
         ),
@@ -65,10 +90,11 @@ class _AuthPageBodyState extends State<AuthPageBody> {
     );
   }
 
-  Widget _buildTab(
-      {required String title,
-      required bool selected,
-      required VoidCallback onTap}) {
+  Widget _buildTab({
+    required String title,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -84,7 +110,7 @@ class _AuthPageBodyState extends State<AuthPageBody> {
           ),
           const SizedBox(height: 6),
           AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
+            duration: const Duration(milliseconds: 300),
             width: selected ? 100 : 0,
             height: 5,
             decoration: BoxDecoration(

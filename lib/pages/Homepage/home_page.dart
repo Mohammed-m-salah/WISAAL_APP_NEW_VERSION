@@ -6,7 +6,6 @@ import 'package:wissal_app/controller/status_controller/status_controller.dart';
 import 'package:wissal_app/pages/Homepage/widgets/call_list_page.dart';
 import 'package:wissal_app/pages/Homepage/widgets/chat_list_page.dart';
 import 'package:wissal_app/pages/Homepage/widgets/group/groups_list_page.dart';
-import 'package:wissal_app/helpers/notification_helper.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -33,7 +32,7 @@ class _HomePageState extends State<HomePage> {
         floatingActionButton: FloatingActionButton(
             backgroundColor: Theme.of(context).colorScheme.primary,
             onPressed: () {
-              Get.toNamed('contactpage');
+              Get.toNamed('/contactpage');
             },
             child: Icon(
               Icons.add,

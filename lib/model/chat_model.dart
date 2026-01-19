@@ -9,6 +9,7 @@ class ChatModel {
   String? timeStamp;
   String? readStatus;
   String? imageUrl;
+  List<String>? imageUrls;
   String? videoUrl;
   String? audioUrl;
   String? documentUrl;
@@ -24,6 +25,7 @@ class ChatModel {
     this.timeStamp,
     this.readStatus,
     this.imageUrl,
+    this.imageUrls,
     this.videoUrl,
     this.audioUrl = '',
     this.documentUrl,
@@ -31,7 +33,6 @@ class ChatModel {
     this.replies,
   });
 
-  /// تحويل نص أو قائمة إلى List<String>
   static List<String> _parseStringList(dynamic value) {
     if (value == null) return [];
     if (value is List) return List<String>.from(value);
@@ -44,7 +45,6 @@ class ChatModel {
     return [];
   }
 
-  /// تحويل نص أو قائمة إلى List<dynamic>
   static List<dynamic> _parseDynamicList(dynamic value) {
     if (value == null) return [];
     if (value is List) return value;
@@ -57,8 +57,23 @@ class ChatModel {
     return [];
   }
 
-  // From JSON
+  static List<String> _parseImageUrls(dynamic value) {
+    if (value == null || value.toString().trim().isEmpty) return [];
+    final str = value.toString().trim();
+    if (str.startsWith('[')) {
+      try {
+        final decoded = jsonDecode(str);
+        if (decoded is List) {
+          return List<String>.from(
+              decoded.where((e) => e != null && e.toString().isNotEmpty));
+        }
+      } catch (_) {}
+    }
+    return [str];
+  }
+
   factory ChatModel.fromJson(Map<String, dynamic> json) {
+    final imageUrls = _parseImageUrls(json['imageUrl']);
     return ChatModel(
       id: json['id'],
       message: json['message'],
@@ -68,6 +83,7 @@ class ChatModel {
       timeStamp: json['timeStamp'],
       readStatus: json['readStatus'],
       imageUrl: json['imageUrl'],
+      imageUrls: imageUrls,
       videoUrl: json['videoUrl'],
       audioUrl: json['audioUrl'],
       documentUrl: json['documentUrl'],
@@ -76,7 +92,16 @@ class ChatModel {
     );
   }
 
-  // To JSON
+  String? _imageUrlsToString() {
+    if (imageUrls == null || imageUrls!.isEmpty) return imageUrl;
+    if (imageUrls!.length == 1) return imageUrls!.first;
+    return jsonEncode(imageUrls);
+  }
+
+  bool get hasImages => imageUrls != null && imageUrls!.isNotEmpty;
+
+  bool get hasMultipleImages => imageUrls != null && imageUrls!.length > 1;
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -86,7 +111,7 @@ class ChatModel {
       'reciverId': reciverId,
       'timeStamp': timeStamp,
       'readStatus': readStatus,
-      'imageUrl': imageUrl,
+      'imageUrl': _imageUrlsToString(),
       'videoUrl': videoUrl,
       'audioUrl': audioUrl,
       'documentUrl': documentUrl,

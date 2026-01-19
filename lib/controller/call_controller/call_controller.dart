@@ -25,6 +25,7 @@ class CallController extends GetxController {
     if (currentUserId == null) return;
 
     getCallNotification().listen((callList) {
+      // نفس الكود الحالي
       for (final callData in callList) {
         final isNew = callData.id != lastShownCallId;
         final isDialing = callData.status == 'dialing';
@@ -32,13 +33,20 @@ class CallController extends GetxController {
 
         if (isDialing && isNew && isForCurrentUser) {
           lastShownCallId = callData.id;
-
           _showIncomingCallSnackbar(callData);
           break;
         }
       }
     }, onError: (err) {
       print("❌ خطأ في الاستماع للمكالمات: $err");
+
+      // إعادة المحاولة بعد 5 ثوانٍ
+      if (err.toString().contains('timedOut')) {
+        Future.delayed(const Duration(seconds: 5), () {
+          print("🔄 إعادة محاولة الاتصال...");
+          listenToIncomingCalls();
+        });
+      }
     });
   }
 
@@ -68,7 +76,6 @@ class CallController extends GetxController {
     );
   }
 
-  /// إرسال مكالمة جديدة
   Future<void> callAction(UserModel receiver, UserModel caller) async {
     final String id = uuid.v6();
 
@@ -138,7 +145,7 @@ class CallController extends GetxController {
     return db
         .from('notification')
         .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false)
+        .order('id', ascending: false)
         .map((eventList) =>
             eventList.map((json) => AudioCallModel.fromJson(json)).toList());
   }

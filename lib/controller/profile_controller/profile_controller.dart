@@ -16,20 +16,32 @@ class ProfileController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    getUserDetails();
+    // 1. الاستماع لتغيرات الحالة لضمان جلب البيانات فور استقرار الجلسة (حل مشكلة السباق الزمني)
+    supabase.auth.onAuthStateChange.listen((data) {
+      if (data.session != null) {
+        print("✅ الجلسة نشطة في ProfileController، جاري جلب البيانات...");
+        getUserDetails();
+      }
+    });
+
+    // 2. محاولة جلب أولية في حال كان المستخدم مسجلاً مسبقاً
+    if (supabase.auth.currentUser != null) {
+      getUserDetails();
+    }
   }
 
   /// ✅ جلب بيانات المستخدم الحالي من جدول save_users
   Future<UserModel?> getUserDetails() async {
     isloading.value = true;
-
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final authUser = supabase.auth.currentUser;
 
-      if (userId == null) {
+      if (authUser == null) {
         print("❌ المستخدم غير مسجل الدخول");
         return null;
       }
+
+      final userId = authUser.id;
 
       final data = await supabase
           .from('save_users')
@@ -37,13 +49,20 @@ class ProfileController extends GetxController {
           .eq('id', userId)
           .maybeSingle();
 
-      print("=====================");
-      print("📦 بيانات المستخدم:");
-      print(const JsonEncoder.withIndent('  ').convert(data));
-
       if (data == null) {
-        print("❌ لم يتم العثور على بيانات المستخدم");
-        return null;
+        print("⚠️ لم يتم العثور على بيانات، جاري إنشاء المستخدم...");
+        // إنشاء المستخدم من بيانات Auth إذا لم يوجد
+        final newUser = UserModel(
+          id: userId,
+          email: authUser.email ?? '',
+          name: authUser.userMetadata?['name'] ?? authUser.email?.split('@').first ?? 'User',
+          status: true,
+        );
+
+        await supabase.from('save_users').upsert(newUser.toJson());
+        currentUser.value = newUser;
+        print("✅ تم إنشاء المستخدم بنجاح");
+        return newUser;
       }
 
       final user = UserModel.fromJson(data);
@@ -57,20 +76,21 @@ class ProfileController extends GetxController {
     }
   }
 
-  /// ✅ رفع صورة إلى Supabase Storage
+  /// ✅ رفع ملف إلى الباكت 'avatars' (تأكد من إنشاء الباكت في Supabase)
   Future<String> uploadeFileToSupabase(String imagePath) async {
-    final fileName =
-        "${const Uuid().v4()}_${imagePath.split('/').last}"; // توليد اسم ملف فريد
+    final fileName = "${const Uuid().v4()}_${imagePath.split('/').last}";
     final file = File(imagePath);
-    final bucket = supabase.storage.from('avatars'); // اسم bucket في Supabase
+    final bucket = supabase.storage.from('avatars');
 
     try {
-      // رفع الصورة إلى Supabase Storage
-      await bucket.upload(fileName, file);
+      await bucket.upload(
+        fileName,
+        file,
+        fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+      );
 
-      // الحصول على رابط عام للصورة
       final publicUrl = bucket.getPublicUrl(fileName);
-      print("✅ تم رفع الصورة، الرابط: $publicUrl");
+      print("✅ تم رفع الصورة بنجاح: $publicUrl");
       return publicUrl;
     } catch (e) {
       print("❌ خطأ أثناء رفع الصورة: $e");
@@ -78,6 +98,7 @@ class ProfileController extends GetxController {
     }
   }
 
+  /// ✅ إضافة عضو لمجموعة
   Future<void> addMemberToGroup(String groupId, UserModel user) async {
     try {
       isloading.value = true;
@@ -85,23 +106,16 @@ class ProfileController extends GetxController {
       final response =
           await db.from('groups').select('members').eq('id', groupId).single();
 
-      if (response == null) {
-        throw Exception("المجموعة غير موجودة");
-      }
-
       dynamic membersData = response['members'];
-
       List<dynamic> membersJson;
 
       if (membersData == null) {
         membersJson = [];
       } else if (membersData is String) {
-        // تفكيك JSON String إلى List
         membersJson = jsonDecode(membersData);
       } else if (membersData is List) {
         membersJson = membersData;
       } else {
-        // أي حالة غير متوقعة نعاملها كقائمة فارغة
         membersJson = [];
       }
 
@@ -115,18 +129,9 @@ class ProfileController extends GetxController {
 
       membersJson.add(user.toJson());
 
-      // لو تحتاج تخزين membersJson كـ JSON String في قاعدة البيانات:
-      // final membersToStore = jsonEncode(membersJson);
-      // ثم تمرير membersToStore
-
-      final updateResponse = await db.from('groups').update({
-        'members': membersJson
-      }) // أو {'members': membersToStore} حسب نوع الحقل
-          .eq('id', groupId);
-
-      if (updateResponse == null) {
-        throw Exception("فشل في تحديث أعضاء المجموعة");
-      }
+      await db
+          .from('groups')
+          .update({'members': membersJson}).eq('id', groupId);
 
       print("تمت إضافة العضو ${user.name} بنجاح إلى المجموعة $groupId");
     } catch (e) {

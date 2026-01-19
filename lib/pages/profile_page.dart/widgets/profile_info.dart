@@ -14,7 +14,6 @@ class ProfileInfo extends StatefulWidget {
 }
 
 class _ProfileInfoState extends State<ProfileInfo> {
-  // Register or retrieve your controllers safely
   final ProfileController profileController =
       Get.put(ProfileController(), permanent: true);
   final UpdateProfileController updateProfileController =
@@ -53,6 +52,107 @@ class _ProfileInfoState extends State<ProfileInfo> {
     setState(() {});
   }
 
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Choose Profile Photo',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildImageOption(
+                    icon: Icons.camera_alt,
+                    label: 'Camera',
+                    color: Colors.blue,
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final picked =
+                          await imagePickerController.pickImageFromCamera();
+                      if (picked.isNotEmpty) {
+                        imagePath.value = picked;
+                      }
+                    },
+                  ),
+                  _buildImageOption(
+                    icon: Icons.photo_library,
+                    label: 'Gallery',
+                    color: Colors.purple,
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final picked =
+                          await imagePickerController.pickImageFromGallery();
+                      if (picked.isNotEmpty) {
+                        imagePath.value = picked;
+                      }
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageOption({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 28, color: color),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -68,45 +168,82 @@ class _ProfileInfoState extends State<ProfileInfo> {
             children: [
               const SizedBox(height: 8),
 
-              // Profile Image
-              InkWell(
-                onTap: isEdit.value
-                    ? () async {
-                        final picked =
-                            await imagePickerController.pickImageFromGallery();
-                        if (picked.isNotEmpty) {
-                          imagePath.value = picked;
-                        }
-                      }
-                    : null,
-                child: Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.onBackground,
-                    shape: BoxShape.circle,
-                  ),
-                  child: ClipOval(
-                    child: imagePath.value.startsWith("http")
-                        ? Image.network(
-                            imagePath.value,
-                            width: 100,
-                            height: 100,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                const Icon(Icons.error),
-                          )
-                        : File(imagePath.value).existsSync()
-                            ? Image.file(
-                                File(imagePath.value),
+              GestureDetector(
+                onTap: () async {
+                  if (!isEdit.value) {
+                    isEdit.value = true;
+                  }
+                  _showImagePickerOptions();
+                },
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.onBackground,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.amber,
+                          width: 3,
+                        ),
+                      ),
+                      child: ClipOval(
+                        child: imagePath.value.startsWith("http")
+                            ? Image.network(
+                                imagePath.value,
                                 width: 100,
                                 height: 100,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) =>
-                                    const Icon(Icons.error),
+                                    const Icon(Icons.person, size: 50),
                               )
-                            : const Icon(Icons.error),
-                  ),
+                            : File(imagePath.value).existsSync()
+                                ? Image.file(
+                                    File(imagePath.value),
+                                    width: 100,
+                                    height: 100,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        const Icon(Icons.person, size: 50),
+                                  )
+                                : const Icon(Icons.person, size: 50),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Tap to change photo',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
                 ),
               ),
 

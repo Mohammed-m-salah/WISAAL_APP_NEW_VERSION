@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wissal_app/controller/contact_controller/contact_controller.dart';
+import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/pages/Homepage/widgets/chat_tile.dart';
 import 'package:wissal_app/pages/chat_page/chat_page.dart';
 
@@ -10,6 +12,15 @@ class ChatListPage extends StatelessWidget {
   String formatTimestamp(DateTime? timestamp) {
     if (timestamp == null) return '12:00';
     return '${timestamp.hour.toString().padLeft(2, '0')} : ${timestamp.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _openChat(UserModel user) {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) {
+      Get.snackbar('خطأ', 'يجب تسجيل الدخول أولاً');
+      return;
+    }
+    Get.to(() => ChatPage(userModel: user));
   }
 
   @override
@@ -43,7 +54,7 @@ class ChatListPage extends StatelessWidget {
 
             return InkWell(
               onTap: () {
-                Get.to(ChatPage(userModel: e.receiver!));
+                _openChat(e.receiver!);
               },
               child: ChatTile(
                 imgUrl: e.receiver!.profileimage ??

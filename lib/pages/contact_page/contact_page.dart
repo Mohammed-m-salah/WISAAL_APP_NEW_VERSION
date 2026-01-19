@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wissal_app/controller/contact_controller/contact_controller.dart';
 import 'package:wissal_app/controller/profile_controller/profile_controller.dart';
+import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/pages/Homepage/widgets/chat_tile.dart';
 import 'package:wissal_app/pages/Homepage/widgets/group/new_group/new_group.dart';
 import 'package:wissal_app/pages/chat_page/chat_page.dart';
@@ -23,6 +24,15 @@ class _ContactPageState extends State<ContactPage> {
   ContactController contactcontroller = Get.put(ContactController());
   ProfileController profileController = Get.put(ProfileController());
   ChatController chatcontroller = Get.put(ChatController());
+
+  void _openChat(UserModel user) {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) {
+      Get.snackbar('خطأ', 'يجب تسجيل الدخول أولاً');
+      return;
+    }
+    Get.to(() => ChatPage(userModel: user));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,11 +104,7 @@ class _ContactPageState extends State<ContactPage> {
                 children: contactcontroller.userList
                     .map((e) => InkWell(
                           onTap: () {
-                            Get.to(ChatPage(userModel: e));
-                            // Get.toNamed('/chatpage', arguments: e);
-                            // String roomId = chatcontroller.getRommId(e.id!);
-                            // print(
-                            //     '==============RoomId==================== ${roomId}');
+                            _openChat(e);
                           },
                           child: ChatTile(
                             imgUrl: e.profileimage ??

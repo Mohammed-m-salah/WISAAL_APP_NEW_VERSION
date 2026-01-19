@@ -1,8 +1,8 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wissal_app/controller/profile_controller/profile_controller.dart';
-import 'package:wissal_app/model/user_model.dart';
 
 class UpdateProfileController extends GetxController {
   final supabase = Supabase.instance.client;
@@ -16,13 +16,13 @@ class UpdateProfileController extends GetxController {
     try {
       String? imageUrl;
 
-      // التحقق من أن الصورة ليست null أو رابط URL
       final isLocalFile =
           imgPath != null && imgPath.isNotEmpty && !imgPath.startsWith('http');
 
       if (isLocalFile) {
         final file = File(imgPath);
-        final fileName = imgPath.split('/').last;
+        final fileName =
+            '${DateTime.now().millisecondsSinceEpoch}_${imgPath.split('/').last}';
 
         final storageBucket = supabase.storage.from('avatars');
 
@@ -37,25 +37,40 @@ class UpdateProfileController extends GetxController {
 
       final userId = supabase.auth.currentUser?.id;
       if (userId != null) {
-        final updateuser = UserModel(
-          id: userId,
-          email: supabase.auth.currentUser!.email,
-          name: name,
-          about: about,
-          profileimage: imageUrl?.isNotEmpty == true
-              ? imageUrl
-              : getcontroller.currentUser.value.profileimage,
-          phonenumber: number,
+        final currentUser = getcontroller.currentUser.value;
+
+        final Map<String, dynamic> updateData = {
+          'id': userId,
+          'email': supabase.auth.currentUser!.email,
+          'name': name ?? currentUser.name,
+          'about': about ?? currentUser.about ?? '',
+          'profileimage': imageUrl ?? imgPath ?? currentUser.profileimage,
+          'phonenumber': number ?? currentUser.phonenumber,
+        };
+
+        await supabase.from('save_users').upsert(updateData);
+
+        await getcontroller.getUserDetails();
+
+        Get.snackbar(
+          "Success",
+          "Profile updated successfully",
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
         );
 
-        await supabase.from('save_users').upsert(updateuser.toJson());
+        // الرجوع للصفحة السابقة بعد النجاح
+        Get.back();
       }
-
-      Get.snackbar("Success", "Profile updated successfully",
-          snackPosition: SnackPosition.BOTTOM);
-      await getcontroller.getUserDetails();
     } catch (e, stacktrace) {
-      Get.snackbar("Error", e.toString(), snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar(
+        "Error",
+        e.toString(),
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
       print("==============Caught error===================: $e");
       print("============Stack trace=================: $stacktrace");
     } finally {
