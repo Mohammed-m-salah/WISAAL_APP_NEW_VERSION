@@ -15,6 +15,8 @@ class ChatModel {
   String? documentUrl;
   List<String>? reactions;
   List<dynamic>? replies;
+  bool? isDeleted;
+  bool? isEdited;
 
   ChatModel({
     this.id,
@@ -31,6 +33,8 @@ class ChatModel {
     this.documentUrl,
     this.reactions,
     this.replies,
+    this.isDeleted = false,
+    this.isEdited = false,
   });
 
   static List<String> _parseStringList(dynamic value) {
@@ -89,6 +93,8 @@ class ChatModel {
       documentUrl: json['documentUrl'],
       reactions: _parseStringList(json['reactions']),
       replies: _parseDynamicList(json['replies']),
+      isDeleted: json['isDeleted'] ?? false,
+      isEdited: json['isEdited'] ?? false,
     );
   }
 
@@ -117,6 +123,8 @@ class ChatModel {
       'documentUrl': documentUrl,
       'reactions': reactions ?? [],
       'replies': replies ?? [],
+      'isDeleted': isDeleted ?? false,
+      'isEdited': isEdited ?? false,
     };
   }
 }

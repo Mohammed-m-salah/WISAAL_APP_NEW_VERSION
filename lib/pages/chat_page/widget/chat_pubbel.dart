@@ -14,6 +14,11 @@ class ChatBubbel extends StatefulWidget {
   final String audioUrl;
   final String senderName;
   final VoidCallback? onDelete;
+  final VoidCallback? onEdit;
+  final bool isDeleted;
+  final bool isEdited;
+  final bool isHighlighted;
+  final bool isSearchMatch;
 
   const ChatBubbel({
     super.key,
@@ -27,6 +32,11 @@ class ChatBubbel extends StatefulWidget {
     required this.audioUrl,
     required this.senderName,
     this.onDelete,
+    this.onEdit,
+    this.isDeleted = false,
+    this.isEdited = false,
+    this.isHighlighted = false,
+    this.isSearchMatch = false,
   });
 
   @override
@@ -89,6 +99,65 @@ class _ChatBubbelState extends State<ChatBubbel> {
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$minutes:$seconds';
+  }
+
+  void _showMessageOptions(BuildContext context, TapDownDetails details) {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(details.globalPosition, details.globalPosition),
+      Offset.zero & overlay.size,
+    );
+
+    showMenu<String>(
+      context: context,
+      position: position,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: [
+        if (widget.onEdit != null && widget.message.trim().isNotEmpty)
+          PopupMenuItem<String>(
+            value: 'edit',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.edit_outlined, color: Colors.blue, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Edit', style: TextStyle(fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        if (widget.onDelete != null)
+          PopupMenuItem<String>(
+            value: 'delete',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Delete', style: TextStyle(fontWeight: FontWeight.w500, color: Colors.red)),
+              ],
+            ),
+          ),
+      ],
+    ).then((value) {
+      if (value == 'edit') {
+        widget.onEdit!();
+      } else if (value == 'delete') {
+        widget.onDelete!();
+      }
+    });
   }
 
   /// الحصول على قائمة الصور من imageUrls أو من imgUrl
@@ -365,14 +434,78 @@ class _ChatBubbelState extends State<ChatBubbel> {
     );
   }
 
+  TapDownDetails? _tapDownDetails;
+
   @override
   Widget build(BuildContext context) {
     // الرسائل المرسلة تظهر على اليمين، المستلمة على اليسار
     final isMe = widget.isComming;
 
-    final bubbleColor = isMe
+    // إذا كانت الرسالة محذوفة
+    if (widget.isDeleted) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade800.withOpacity(0.5),
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(18),
+                  topRight: const Radius.circular(18),
+                  bottomLeft: Radius.circular(isMe ? 18 : 4),
+                  bottomRight: Radius.circular(isMe ? 4 : 18),
+                ),
+                border: Border.all(color: Colors.grey.shade600, width: 0.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.block,
+                    size: 16,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'This message was deleted',
+                    style: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontStyle: FontStyle.italic,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              widget.time,
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey.shade500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    var bubbleColor = isMe
         ? Theme.of(context).colorScheme.primary
         : Theme.of(context).colorScheme.primaryContainer;
+
+    // تمييز الرسالة الحالية في البحث
+    if (widget.isHighlighted) {
+      bubbleColor = Colors.amber.shade700;
+    } else if (widget.isSearchMatch) {
+      bubbleColor = isMe
+          ? Theme.of(context).colorScheme.primary.withOpacity(0.8)
+          : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.8);
+    }
 
     final imageUrls = _getImageUrls();
     final hasImage = imageUrls.isNotEmpty;
@@ -387,7 +520,14 @@ class _ChatBubbelState extends State<ChatBubbel> {
             isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           GestureDetector(
-            onLongPress: widget.onDelete,
+            onTapDown: (details) => _tapDownDetails = details,
+            onLongPress: (widget.onDelete != null || widget.onEdit != null) && !widget.isDeleted
+                ? () {
+                    if (_tapDownDetails != null) {
+                      _showMessageOptions(context, _tapDownDetails!);
+                    }
+                  }
+                : null,
             child: Container(
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.75,
@@ -401,10 +541,15 @@ class _ChatBubbelState extends State<ChatBubbel> {
                   bottomLeft: Radius.circular(isMe ? 18 : 4),
                   bottomRight: Radius.circular(isMe ? 4 : 18),
                 ),
+                border: widget.isHighlighted
+                    ? Border.all(color: Colors.amber.shade300, width: 3)
+                    : null,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 8,
+                    color: widget.isHighlighted
+                        ? Colors.amber.withOpacity(0.4)
+                        : Colors.black.withOpacity(0.08),
+                    blurRadius: widget.isHighlighted ? 12 : 8,
                     offset: const Offset(0, 2),
                   ),
                 ],
@@ -538,7 +683,7 @@ class _ChatBubbelState extends State<ChatBubbel> {
                         ),
                       ),
 
-                    // الوقت وحالة القراءة
+                    // الوقت وحالة القراءة وأيقونة التعديل
                     Padding(
                       padding: const EdgeInsets.only(
                         left: 14,
@@ -549,6 +694,15 @@ class _ChatBubbelState extends State<ChatBubbel> {
                         mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
+                          // أيقونة التعديل
+                          if (widget.isEdited) ...[
+                            Icon(
+                              Icons.edit,
+                              size: 12,
+                              color: Colors.white.withOpacity(0.6),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
                           Text(
                             widget.time,
                             style: TextStyle(

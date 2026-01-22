@@ -12,7 +12,6 @@ import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/pages/call_page/Audio_call_page.dart';
 import 'package:wissal_app/pages/chat_page/widget/chat_pubbel.dart';
 import 'package:wissal_app/pages/user_profile/profile_page.dart';
-
 import '../../controller/call_controller/call_controller.dart';
 import '../../controller/status_controller/status_controller.dart';
 
@@ -32,8 +31,16 @@ class _ChatPageState extends State<ChatPage>
   late ProfileController profileController;
   late ImagePickerController imagePickerController;
   final TextEditingController messageController = TextEditingController();
+  final TextEditingController searchController = TextEditingController();
   final ScrollController scrollController = ScrollController();
   late AnimationController _typingAnimationController;
+
+  // متغيرات البحث
+  bool isSearching = false;
+  String searchQuery = '';
+  int currentSearchIndex = 0;
+  List<int> searchMatchIndices = [];
+  List<ChatModel> allMessages = [];
 
   @override
   void initState() {
@@ -45,7 +52,6 @@ class _ChatPageState extends State<ChatPage>
     profileController = Get.put(ProfileController());
     imagePickerController = Get.put(ImagePickerController());
 
-    // تهيئة أنيميشن النقاط المتحركة
     _typingAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -67,7 +73,6 @@ class _ChatPageState extends State<ChatPage>
 
       if (roomId.isNotEmpty) {
         chatcontroller.currentChatRoomId.value = roomId;
-        // بدء الاستماع لحالة الكتابة
         chatcontroller.listenToTypingStatus(widget.userModel.id!);
       } else {
         print("⚠️ لم يتمكن من إنشاء Room ID");
@@ -86,6 +91,7 @@ class _ChatPageState extends State<ChatPage>
     chatcontroller.clearTypingStatus(widget.userModel.id!);
     _typingAnimationController.dispose();
     messageController.dispose();
+    searchController.dispose();
     scrollController.dispose();
     super.dispose();
   }
@@ -100,6 +106,60 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
+  void _updateSearchMatches(List<ChatModel> messages) {
+    searchMatchIndices.clear();
+    if (searchQuery.isEmpty) return;
+
+    final query = searchQuery.toLowerCase();
+    for (int i = 0; i < messages.length; i++) {
+      final messageText = (messages[i].message ?? '').toLowerCase();
+      if (messageText.contains(query)) {
+        searchMatchIndices.add(i);
+      }
+    }
+
+    if (searchMatchIndices.isNotEmpty &&
+        currentSearchIndex >= searchMatchIndices.length) {
+      currentSearchIndex = 0;
+    }
+  }
+
+  void _goToNextMatch() {
+    if (searchMatchIndices.isEmpty) return;
+    setState(() {
+      currentSearchIndex = (currentSearchIndex + 1) % searchMatchIndices.length;
+    });
+    _scrollToCurrentMatch();
+  }
+
+  void _goToPreviousMatch() {
+    if (searchMatchIndices.isEmpty) return;
+    setState(() {
+      currentSearchIndex =
+          (currentSearchIndex - 1 + searchMatchIndices.length) %
+              searchMatchIndices.length;
+    });
+    _scrollToCurrentMatch();
+  }
+
+  void _scrollToCurrentMatch() {
+    if (searchMatchIndices.isEmpty || !scrollController.hasClients) return;
+
+    final targetIndex = searchMatchIndices[currentSearchIndex];
+    // حساب موقع الرسالة (كل رسالة حوالي 100 بكسل)
+    final estimatedOffset = targetIndex * 100.0;
+
+    // التأكد من عدم تجاوز الحدود
+    final maxScroll = scrollController.position.maxScrollExtent;
+    final offset = estimatedOffset.clamp(0.0, maxScroll);
+
+    scrollController.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
+  }
+
   Widget _buildTypingDots() {
     return SizedBox(
       width: 30,
@@ -110,14 +170,12 @@ class _ChatPageState extends State<ChatPage>
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: List.generate(3, (index) {
-              // Stagger the animation for each dot
               final delay = index * 0.2;
-              final animValue = (_typingAnimationController.value + delay) % 1.0;
+              final animValue =
+                  (_typingAnimationController.value + delay) % 1.0;
 
-              // Create a bouncing effect using sine wave
-              final bounce = (animValue < 0.5)
-                  ? animValue * 2
-                  : 2 - (animValue * 2);
+              final bounce =
+                  (animValue < 0.5) ? animValue * 2 : 2 - (animValue * 2);
 
               return Transform.translate(
                 offset: Offset(0, -4 * bounce),
@@ -157,124 +215,211 @@ class _ChatPageState extends State<ChatPage>
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
-            Get.back();
+            if (isSearching) {
+              setState(() {
+                isSearching = false;
+                searchQuery = '';
+                searchController.clear();
+              });
+            } else {
+              Get.back();
+            }
           },
         ),
-        title: InkWell(
-          onTap: () {
-            Get.to(() => UserProfilePage(userModel: userModel));
-          },
-          child: Row(
-            children: [
-              ClipOval(
-                child: Image.network(
-                  userModel.profileimage ??
-                      'https://i.ibb.co/V04vrTtV/blank-profile-picture-973460-1280.png',
-                  width: 50,
-                  height: 50,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+        title: isSearching
+            ? Row(
                 children: [
-                  Text(
-                    userModel.name ?? "user_name",
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
+                  Expanded(
+                    child: TextField(
+                      controller: searchController,
+                      autofocus: true,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        hintText: 'Search messages...',
+                        hintStyle: TextStyle(color: Colors.white54),
+                        border: InputBorder.none,
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          searchQuery = value;
+                          currentSearchIndex = 0;
+                        });
+                      },
+                    ),
                   ),
-                  // عرض حالة الكتابة أو حالة الاتصال
-                  Obx(() {
-                    // إذا كان المستخدم الآخر يكتب، أظهر "يكتب..."
-                    if (chatcontroller.isOtherUserTyping.value) {
-                      return Row(
+                  if (searchQuery.isNotEmpty && searchMatchIndices.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${currentSearchIndex + 1}/${searchMatchIndices.length}',
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ),
+                ],
+              )
+            : InkWell(
+                onTap: () {
+                  Get.to(() => UserProfilePage(userModel: userModel));
+                },
+                child: Row(
+                  children: [
+                    ClipOval(
+                      child: Image.network(
+                        userModel.profileimage ??
+                            'https://i.ibb.co/V04vrTtV/blank-profile-picture-973460-1280.png',
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            "يكتب",
+                            userModel.name ?? "user_name",
                             style: Theme.of(context)
                                 .textTheme
-                                .titleSmall
+                                .titleMedium
                                 ?.copyWith(
-                                  color: Colors.greenAccent,
-                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
                                 ),
                           ),
-                          const SizedBox(width: 4),
-                          _buildTypingDots(),
+                          Obx(() {
+                            if (chatcontroller.isOtherUserTyping.value) {
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    "يكتب",
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          color: Colors.greenAccent,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  _buildTypingDots(),
+                                ],
+                              );
+                            }
+                            return StreamBuilder<UserModel>(
+                              stream: chatcontroller.getStatus(userModel.id!),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                    ConnectionState.waiting) {
+                                  return Text(
+                                    "جاري التحقق...",
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          color: Colors.white70,
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                  );
+                                }
+
+                                if (!snapshot.hasData || snapshot.hasError) {
+                                  return Text(
+                                    "غير متصل",
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          color: Colors.grey,
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                  );
+                                }
+
+                                final user = snapshot.data!;
+                                final isOnline = user.status ?? false;
+
+                                return Text(
+                                  isOnline ? "متصل" : "غير متصل",
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(
+                                        color: isOnline
+                                            ? Colors.green
+                                            : Colors.grey,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                );
+                              },
+                            );
+                          }),
                         ],
-                      );
-                    }
-                    // وإلا أظهر حالة الاتصال
-                    return StreamBuilder<UserModel>(
-                      stream: chatcontroller.getStatus(userModel.id!),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return Text(
-                            "جاري التحقق...",
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(
-                                  color: Colors.white70,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                          );
-                        }
-
-                        if (!snapshot.hasData || snapshot.hasError) {
-                          return Text(
-                            "غير متصل",
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(
-                                  color: Colors.grey,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                          );
-                        }
-
-                        final user = snapshot.data!;
-                        final isOnline = user.status ?? false;
-
-                        return Text(
-                          isOnline ? "متصل" : "غير متصل",
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleSmall
-                              ?.copyWith(
-                                color: isOnline ? Colors.green : Colors.grey,
-                                fontWeight: FontWeight.w400,
-                              ),
-                        );
-                      },
-                    );
-                  }),
-                ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () {
-              Get.to(AudioCallPage(target: userModel));
-              callController.callAction(
-                  userModel, profileController.currentUser.value);
-            },
-            icon: const Icon(Icons.call, color: Colors.white),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.video_call, color: Colors.white),
-          ),
-        ],
+        actions: isSearching
+            ? [
+                if (searchQuery.isNotEmpty &&
+                    searchMatchIndices.isNotEmpty) ...[
+                  IconButton(
+                    onPressed: _goToPreviousMatch,
+                    icon: const Icon(Icons.keyboard_arrow_up,
+                        color: Colors.white),
+                    tooltip: 'Previous',
+                  ),
+                  IconButton(
+                    onPressed: _goToNextMatch,
+                    icon: const Icon(Icons.keyboard_arrow_down,
+                        color: Colors.white),
+                    tooltip: 'Next',
+                  ),
+                ],
+                if (searchQuery.isNotEmpty)
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        searchQuery = '';
+                        searchController.clear();
+                        searchMatchIndices.clear();
+                        currentSearchIndex = 0;
+                      });
+                    },
+                    icon: const Icon(Icons.close, color: Colors.white),
+                  ),
+              ]
+            : [
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      isSearching = true;
+                    });
+                  },
+                  icon: const Icon(Icons.search, color: Colors.white),
+                ),
+                IconButton(
+                  onPressed: () {
+                    Get.to(AudioCallPage(target: userModel));
+                    callController.callAction(
+                        userModel, profileController.currentUser.value);
+                  },
+                  icon: const Icon(Icons.call, color: Colors.white),
+                ),
+                IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.video_call, color: Colors.white),
+                ),
+              ],
       ),
       body: Column(
         children: [
@@ -292,13 +437,56 @@ class _ChatPageState extends State<ChatPage>
                           child: Text("Error loading messages"));
                     }
                     if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const Center(child: Text("No Messages"));
+                      return Center(
+                        child: GestureDetector(
+                          onTap: () {
+                            chatcontroller.sendMessage(
+                              widget.userModel.id!,
+                              '👋',
+                              widget.userModel,
+                            );
+                          },
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer
+                                      .withOpacity(0.3),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Text(
+                                  '👋',
+                                  style: TextStyle(fontSize: 60),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'اضغط للتحية',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
                     }
 
                     final messages = snapshot.data!.reversed.toList();
+                    allMessages = messages;
 
+                    // تحديث فهارس البحث
                     WidgetsBinding.instance.addPostFrameCallback((_) {
-                      scrollToBottom();
+                      if (isSearching && searchQuery.isNotEmpty) {
+                        _updateSearchMatches(messages);
+                        setState(() {});
+                      }
+                      if (!isSearching) scrollToBottom();
                     });
 
                     final currentUserId =
@@ -306,54 +494,286 @@ class _ChatPageState extends State<ChatPage>
                             Supabase.instance.client.auth.currentUser?.id ??
                             '';
 
-                    return ListView.builder(
-                      reverse: true,
-                      controller: scrollController,
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final message = messages[index];
-                        final isMyMessage = message.senderId == currentUserId;
+                    if (isSearching &&
+                        searchQuery.isNotEmpty &&
+                        searchMatchIndices.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search_off,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No results found for "$searchQuery"',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
 
-                        return ChatBubbel(
-                          senderName: message.senderName ?? '',
-                          audioUrl: message.audioUrl ?? "",
-                          message: message.message ?? '',
-                          isComming: isMyMessage,
-                          iscolor: Colors.amber,
-                          time: message.timeStamp != null
-                              ? DateFormat('hh:mm a').format(
-                                  DateTime.parse(message.timeStamp!),
-                                )
-                              : '',
-                          status: "Read",
-                          imgUrl: message.imageUrl ?? "",
-                          imageUrls: message.imageUrls,
-                          onDelete: isMyMessage
-                              ? () {
-                                  Get.defaultDialog(
-                                    title: "حذف الرسالة",
-                                    middleText:
-                                        "هل أنت متأكد من حذف هذه الرسالة؟",
-                                    textCancel: "إلغاء",
-                                    textConfirm: "حذف",
-                                    confirmTextColor: Colors.white,
-                                    onConfirm: () async {
-                                      await chatcontroller.deleteMessage(
-                                        message.id!,
-                                        chatcontroller.currentChatRoomId.value,
-                                      );
-                                      Get.back(); // إغلاق النافذة
-                                    },
-                                  );
-                                }
-                              : null,
-                        );
-                      },
+                    return Column(
+                      children: [
+                        if (isSearching &&
+                            searchQuery.isNotEmpty &&
+                            searchMatchIndices.isNotEmpty)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primaryContainer
+                                .withOpacity(0.3),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.search,
+                                    size: 16, color: Colors.grey[600]),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${searchMatchIndices.length} results found',
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        Expanded(
+                          child: ListView.builder(
+                            reverse: !isSearching,
+                            controller: scrollController,
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final message = messages[index];
+                              final isMyMessage =
+                                  message.senderId == currentUserId;
+
+                              // تحديد إذا كانت هذه الرسالة متطابقة مع البحث
+                              final isCurrentSearchMatch = isSearching &&
+                                  searchMatchIndices.isNotEmpty &&
+                                  searchMatchIndices[currentSearchIndex] ==
+                                      index;
+
+                              // تحديد إذا كانت الرسالة تحتوي على نص البحث
+                              final isSearchMatch = isSearching &&
+                                  searchQuery.isNotEmpty &&
+                                  (message.message ?? '')
+                                      .toLowerCase()
+                                      .contains(searchQuery.toLowerCase());
+
+                              return ChatBubbel(
+                                senderName: message.senderName ?? '',
+                                audioUrl: message.audioUrl ?? "",
+                                isHighlighted: isCurrentSearchMatch,
+                                isSearchMatch: isSearchMatch,
+                                message: message.message ?? '',
+                                isComming: isMyMessage,
+                                iscolor: Colors.amber,
+                                time: message.timeStamp != null
+                                    ? DateFormat('hh:mm a').format(
+                                        DateTime.parse(message.timeStamp!),
+                                      )
+                                    : '',
+                                status: "Read",
+                                imgUrl: message.imageUrl ?? "",
+                                imageUrls: message.imageUrls,
+                                isDeleted: message.isDeleted ?? false,
+                                isEdited: message.isEdited ?? false,
+                                onDelete: isMyMessage &&
+                                        !(message.isDeleted ?? false)
+                                    ? () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                            title: Row(
+                                              children: [
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.red
+                                                        .withOpacity(0.1),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            10),
+                                                  ),
+                                                  child: const Icon(
+                                                      Icons.delete_outline,
+                                                      color: Colors.red,
+                                                      size: 24),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                const Text('Delete Message'),
+                                              ],
+                                            ),
+                                            content: const Text(
+                                              'Are you sure you want to delete this message?',
+                                              style: TextStyle(fontSize: 16),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(context),
+                                                child: Text(
+                                                  'Cancel',
+                                                  style: TextStyle(
+                                                      color:
+                                                          Colors.grey.shade600),
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: () async {
+                                                  Navigator.pop(context);
+                                                  await chatcontroller
+                                                      .deleteMessage(
+                                                    message.id!,
+                                                    chatcontroller
+                                                        .currentChatRoomId
+                                                        .value,
+                                                  );
+                                                },
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.red,
+                                                  foregroundColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            10),
+                                                  ),
+                                                ),
+                                                child: const Text('Delete'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }
+                                    : null,
+                                onEdit: isMyMessage &&
+                                        !(message.isDeleted ?? false) &&
+                                        (message.message ?? '')
+                                            .trim()
+                                            .isNotEmpty
+                                    ? () {
+                                        final editController =
+                                            TextEditingController(
+                                          text: message.message ?? '',
+                                        );
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                            title: Row(
+                                              children: [
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.blue
+                                                        .withOpacity(0.1),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            10),
+                                                  ),
+                                                  child: const Icon(Icons.edit,
+                                                      color: Colors.blue,
+                                                      size: 24),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                const Text('Edit Message'),
+                                              ],
+                                            ),
+                                            content: TextField(
+                                              controller: editController,
+                                              maxLines: 4,
+                                              autofocus: true,
+                                              decoration: InputDecoration(
+                                                hintText:
+                                                    "Write the new message...",
+                                                border: OutlineInputBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                focusedBorder:
+                                                    OutlineInputBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  borderSide: const BorderSide(
+                                                      color: Colors.blue,
+                                                      width: 2),
+                                                ),
+                                              ),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(context),
+                                                child: Text(
+                                                  'Cancel',
+                                                  style: TextStyle(
+                                                      color:
+                                                          Colors.grey.shade600),
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: () async {
+                                                  if (editController.text
+                                                      .trim()
+                                                      .isNotEmpty) {
+                                                    await chatcontroller
+                                                        .editMessage(
+                                                      message.id!,
+                                                      editController.text
+                                                          .trim(),
+                                                      chatcontroller
+                                                          .currentChatRoomId
+                                                          .value,
+                                                    );
+                                                  }
+                                                  Navigator.pop(context);
+                                                },
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.blue,
+                                                  foregroundColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            10),
+                                                  ),
+                                                ),
+                                                child: const Text('Edit'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }
+                                    : null,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     );
                   },
                 ),
-
-                // عرض الصور المختارة قبل الإرسال - تصميم احترافي
                 Obx(
                   () => chatcontroller.selectedImagePaths.isNotEmpty
                       ? Positioned(
@@ -382,7 +802,6 @@ class _ChatPageState extends State<ChatPage>
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Header
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 16, vertical: 12),
@@ -440,13 +859,11 @@ class _ChatPageState extends State<ChatPage>
                                     ],
                                   ),
                                 ),
-                                // Images Preview Grid
                                 Flexible(
                                   child: Obx(() {
                                     final images =
                                         chatcontroller.selectedImagePaths;
                                     if (images.length == 1) {
-                                      // Single image - show large
                                       return Container(
                                         margin: const EdgeInsets.all(16),
                                         decoration: BoxDecoration(
@@ -501,7 +918,6 @@ class _ChatPageState extends State<ChatPage>
                                         ),
                                       );
                                     } else {
-                                      // Multiple images - show grid
                                       return Container(
                                         margin: const EdgeInsets.all(12),
                                         child: GridView.builder(
@@ -553,7 +969,6 @@ class _ChatPageState extends State<ChatPage>
                                                     ),
                                                   ),
                                                 ),
-                                                // Image number badge
                                                 Positioned(
                                                   bottom: 4,
                                                   left: 4,
@@ -588,7 +1003,6 @@ class _ChatPageState extends State<ChatPage>
                                     }
                                   }),
                                 ),
-                                // Caption hint
                                 Padding(
                                   padding: const EdgeInsets.only(
                                       left: 16, right: 16, bottom: 12),
@@ -620,7 +1034,6 @@ class _ChatPageState extends State<ChatPage>
             ),
           ),
 
-          // حقل الإدخال والأزرار - تصميم احترافي
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             decoration: BoxDecoration(
@@ -637,7 +1050,6 @@ class _ChatPageState extends State<ChatPage>
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // زر التسجيل الصوتي
                   Obx(() {
                     final isRecording = chatcontroller.isRecording.value;
                     return GestureDetector(
@@ -683,8 +1095,6 @@ class _ChatPageState extends State<ChatPage>
                     );
                   }),
                   const SizedBox(width: 8),
-
-                  // حقل الإدخال
                   Expanded(
                     child: Container(
                       constraints: const BoxConstraints(maxHeight: 120),
@@ -695,7 +1105,6 @@ class _ChatPageState extends State<ChatPage>
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          // زر المرفقات
                           Obx(
                             () => chatcontroller.selectedImagePaths.isEmpty
                                 ? IconButton(
@@ -748,7 +1157,7 @@ class _ChatPageState extends State<ChatPage>
                               minLines: 1,
                               style: const TextStyle(color: Colors.white),
                               decoration: const InputDecoration(
-                                hintText: 'اكتب رسالة...',
+                                hintText: 'Write a message...',
                                 hintStyle: TextStyle(color: Colors.white54),
                                 border: InputBorder.none,
                                 contentPadding: EdgeInsets.symmetric(
@@ -763,8 +1172,6 @@ class _ChatPageState extends State<ChatPage>
                     ),
                   ),
                   const SizedBox(width: 8),
-
-                  // زر الإرسال
                   Obx(() {
                     final canSend = chatcontroller.isTyping.value ||
                         chatcontroller.selectedImagePaths.isNotEmpty;
@@ -832,7 +1239,7 @@ class _ChatPageState extends State<ChatPage>
                         color: Colors.red, size: 12),
                     SizedBox(width: 8),
                     Text(
-                      'جاري التسجيل... اترك للإرسال',
+                      'Registering in progress... Leave to submit',
                       style: TextStyle(
                         color: Colors.red,
                         fontWeight: FontWeight.w500,

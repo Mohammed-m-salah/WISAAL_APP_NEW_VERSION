@@ -200,6 +200,9 @@ class ChatController extends GetxController {
         'un_read_message_no': 0,
       });
       await contactController.saveContact(targetUser);
+
+      // تحديث قائمة غرف الدردشة لتظهر المحادثة الجديدة فوراً
+      await contactController.getChatRoomList();
     } catch (e) {
       print("❌ Error sending message: $e");
       Get.snackbar('خطأ', 'حدث خطأ أثناء إرسال الرسالة');
@@ -321,6 +324,10 @@ class ChatController extends GetxController {
       });
 
       await contactController.saveContact(targetUser);
+
+      // تحديث قائمة غرف الدردشة لتظهر المحادثة الجديدة فوراً
+      await contactController.getChatRoomList();
+
       print('✅ تم إرسال الرسالة الصوتية بنجاح');
     } catch (e) {
       print('❌ خطأ في إرسال الرسالة الصوتية: $e');
@@ -345,13 +352,32 @@ class ChatController extends GetxController {
 
   Future<void> deleteMessage(String messageId, String targetUserId) async {
     try {
-      await db.from('chats').delete().eq('id', messageId);
+      // بدل الحذف الفعلي، نقوم بتحديث الرسالة لتصبح محذوفة
+      await db.from('chats').update({
+        'isDeleted': true,
+        'message': '',
+        'imageUrl': '',
+        'audioUrl': '',
+      }).eq('id', messageId);
       print("✅ تم حذف الرسالة بنجاح");
-
       update();
     } catch (e) {
       print("❌ فشل في حذف الرسالة: $e");
       Get.snackbar("خطأ", "فشل حذف الرسالة");
+    }
+  }
+
+  Future<void> editMessage(String messageId, String newMessage, String roomId) async {
+    try {
+      await db.from('chats').update({
+        'message': newMessage,
+        'isEdited': true,
+      }).eq('id', messageId);
+      print("✅ تم تعديل الرسالة بنجاح");
+      update();
+    } catch (e) {
+      print("❌ فشل في تعديل الرسالة: $e");
+      Get.snackbar("خطأ", "فشل تعديل الرسالة");
     }
   }
 
@@ -548,9 +574,6 @@ class ChatController extends GetxController {
         });
   }
 
-  // ==================== Typing Indicator Methods ====================
-
-  /// تحديث حالة الكتابة عند بدء الكتابة
   Future<void> setTypingStatus(String targetUserId) async {
     final currentUser = auth.currentUser;
     if (currentUser == null) return;
@@ -561,7 +584,6 @@ class ChatController extends GetxController {
     _typingTimer?.cancel();
 
     try {
-      // استخدام upsert بدلاً من update لإنشاء الغرفة إذا لم تكن موجودة
       await db.from('chat_rooms').upsert({
         'id': roomId,
         'senderId': currentUser.id,
@@ -590,7 +612,6 @@ class ChatController extends GetxController {
     _typingTimer?.cancel();
 
     try {
-      // إزالة حالة الكتابة فقط إذا كان المستخدم الحالي هو من يكتب
       await db
           .from('chat_rooms')
           .update({
@@ -633,9 +654,7 @@ class ChatController extends GetxController {
         final typingId = payload.newRecord['typing_user_id'];
         final typingAt = payload.newRecord['typing_at'];
 
-        // التحقق من أن المستخدم الآخر هو من يكتب (ليس المستخدم الحالي)
         if (typingId != null && typingId != currentUser.id) {
-          // التحقق من أن الكتابة حديثة (خلال آخر 5 ثواني)
           if (typingAt != null) {
             final typingTime = DateTime.tryParse(typingAt);
             if (typingTime != null) {
@@ -664,7 +683,6 @@ class ChatController extends GetxController {
     _typingChannels[roomId] = channel;
   }
 
-  /// إيقاف الاستماع لحالة الكتابة
   void stopListeningToTypingStatus(String targetUserId) {
     final roomId = getRoomId(targetUserId);
     if (roomId.isEmpty) return;
