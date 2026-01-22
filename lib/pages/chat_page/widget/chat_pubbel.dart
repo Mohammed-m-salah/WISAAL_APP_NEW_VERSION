@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:wissal_app/config/colors.dart';
+import 'package:wissal_app/model/message_sync_status.dart';
+import 'package:wissal_app/widgets/message_status_indicator.dart';
 
 class ChatBubbel extends StatefulWidget {
   final String message;
@@ -10,15 +13,24 @@ class ChatBubbel extends StatefulWidget {
   final String time;
   final String status;
   final String imgUrl;
-  final List<String>? imageUrls; // قائمة الصور المجمعة
+  final List<String>? imageUrls;
   final String audioUrl;
   final String senderName;
   final VoidCallback? onDelete;
   final VoidCallback? onEdit;
+  final VoidCallback? onPin;
+  final VoidCallback? onUnpin;
+  final VoidCallback? onForward;
+  final bool isPinned;
   final bool isDeleted;
   final bool isEdited;
   final bool isHighlighted;
   final bool isSearchMatch;
+  final bool isPinnedHighlight;
+  final bool isForwarded;
+  final String? forwardedFrom;
+  final MessageSyncStatus? syncStatus;
+  final VoidCallback? onRetry;
 
   const ChatBubbel({
     super.key,
@@ -33,10 +45,19 @@ class ChatBubbel extends StatefulWidget {
     required this.senderName,
     this.onDelete,
     this.onEdit,
+    this.onPin,
+    this.onUnpin,
+    this.onForward,
+    this.isPinned = false,
     this.isDeleted = false,
     this.isEdited = false,
     this.isHighlighted = false,
     this.isSearchMatch = false,
+    this.isPinnedHighlight = false,
+    this.isForwarded = false,
+    this.forwardedFrom,
+    this.syncStatus,
+    this.onRetry,
   });
 
   @override
@@ -114,6 +135,60 @@ class _ChatBubbelState extends State<ChatBubbel> {
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       items: [
+        if (widget.isPinned && widget.onUnpin != null)
+          PopupMenuItem<String>(
+            value: 'unpin',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.push_pin, color: Colors.orange, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Unpin', style: TextStyle(fontWeight: FontWeight.w500, color: Colors.orange)),
+              ],
+            ),
+          )
+        else if (widget.onPin != null)
+          PopupMenuItem<String>(
+            value: 'pin',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.push_pin_outlined, color: Colors.amber, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Pin', style: TextStyle(fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        if (widget.onForward != null)
+          PopupMenuItem<String>(
+            value: 'forward',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.shortcut, color: Colors.green, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Forward', style: TextStyle(fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
         if (widget.onEdit != null && widget.message.trim().isNotEmpty)
           PopupMenuItem<String>(
             value: 'edit',
@@ -152,7 +227,13 @@ class _ChatBubbelState extends State<ChatBubbel> {
           ),
       ],
     ).then((value) {
-      if (value == 'edit') {
+      if (value == 'pin') {
+        widget.onPin!();
+      } else if (value == 'unpin') {
+        widget.onUnpin!();
+      } else if (value == 'forward') {
+        widget.onForward!();
+      } else if (value == 'edit') {
         widget.onEdit!();
       } else if (value == 'delete') {
         widget.onDelete!();
@@ -160,13 +241,11 @@ class _ChatBubbelState extends State<ChatBubbel> {
     });
   }
 
-  /// الحصول على قائمة الصور من imageUrls أو من imgUrl
   List<String> _getImageUrls() {
     if (widget.imageUrls != null && widget.imageUrls!.isNotEmpty) {
       return widget.imageUrls!;
     }
     if (widget.imgUrl.trim().isEmpty) return [];
-    // محاولة تحليل كـ JSON array
     if (widget.imgUrl.trim().startsWith('[')) {
       try {
         final decoded = jsonDecode(widget.imgUrl);
@@ -220,7 +299,6 @@ class _ChatBubbelState extends State<ChatBubbel> {
     );
   }
 
-  /// عرض معرض الصور
   void _showImageGallery(BuildContext context, List<String> images, int initialIndex) {
     Navigator.push(
       context,
@@ -233,8 +311,8 @@ class _ChatBubbelState extends State<ChatBubbel> {
     );
   }
 
-  /// عرض صورة واحدة
   Widget _buildSingleImage(BuildContext context, String imageUrl) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: () => _showFullScreenImage(context, imageUrl),
       child: Stack(
@@ -249,14 +327,14 @@ class _ChatBubbelState extends State<ChatBubbel> {
               return Container(
                 width: double.infinity,
                 height: 220,
-                color: Colors.grey.shade800,
+                color: Theme.of(context).colorScheme.primaryContainer,
                 child: Center(
                   child: CircularProgressIndicator(
                     value: loadingProgress.expectedTotalBytes != null
                         ? loadingProgress.cumulativeBytesLoaded /
                             loadingProgress.expectedTotalBytes!
                         : null,
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.primary,
                     strokeWidth: 2,
                   ),
                 ),
@@ -265,15 +343,18 @@ class _ChatBubbelState extends State<ChatBubbel> {
             errorBuilder: (context, error, stackTrace) => Container(
               width: double.infinity,
               height: 220,
-              color: Colors.grey.shade800,
-              child: const Column(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.broken_image, color: Colors.white54, size: 40),
-                  SizedBox(height: 8),
+                  Icon(Icons.broken_image,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                      size: 40),
+                  const SizedBox(height: 8),
                   Text(
-                    'فشل تحميل الصورة',
-                    style: TextStyle(color: Colors.white54),
+                    'Failed to load image',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
                   ),
                 ],
               ),
@@ -306,7 +387,6 @@ class _ChatBubbelState extends State<ChatBubbel> {
     );
   }
 
-  /// عرض شبكة الصور المتعددة
   Widget _buildImageGrid(BuildContext context, List<String> images) {
     final imageCount = images.length;
     final displayCount = imageCount > 4 ? 4 : imageCount;
@@ -326,7 +406,6 @@ class _ChatBubbelState extends State<ChatBubbel> {
 
   Widget _buildGridLayout(BuildContext context, List<String> images, int displayCount, int remainingCount) {
     if (displayCount == 2) {
-      // صورتان جنبًا إلى جنب
       return Row(
         children: [
           Expanded(child: _buildGridImage(context, images, 0)),
@@ -335,7 +414,6 @@ class _ChatBubbelState extends State<ChatBubbel> {
         ],
       );
     } else if (displayCount == 3) {
-      // صورة كبيرة على اليسار وصورتان صغيرتان على اليمين
       return Row(
         children: [
           Expanded(
@@ -355,7 +433,6 @@ class _ChatBubbelState extends State<ChatBubbel> {
         ],
       );
     } else {
-      // 4 صور أو أكثر - شبكة 2x2
       return Column(
         children: [
           Expanded(
@@ -417,18 +494,19 @@ class _ChatBubbelState extends State<ChatBubbel> {
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
           return Container(
-            color: Colors.grey.shade800,
-            child: const Center(
+            color: Theme.of(context).colorScheme.primaryContainer,
+            child: Center(
               child: CircularProgressIndicator(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.primary,
                 strokeWidth: 2,
               ),
             ),
           );
         },
         errorBuilder: (context, error, stackTrace) => Container(
-          color: Colors.grey.shade800,
-          child: const Icon(Icons.broken_image, color: Colors.white54),
+          color: Theme.of(context).colorScheme.primaryContainer,
+          child: Icon(Icons.broken_image,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
         ),
       ),
     );
@@ -438,10 +516,10 @@ class _ChatBubbelState extends State<ChatBubbel> {
 
   @override
   Widget build(BuildContext context) {
-    // الرسائل المرسلة تظهر على اليمين، المستلمة على اليسار
     final isMe = widget.isComming;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // إذا كانت الرسالة محذوفة
+    // Deleted message
     if (widget.isDeleted) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
@@ -452,14 +530,16 @@ class _ChatBubbelState extends State<ChatBubbel> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.grey.shade800.withOpacity(0.5),
+                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(18),
                   topRight: const Radius.circular(18),
                   bottomLeft: Radius.circular(isMe ? 18 : 4),
                   bottomRight: Radius.circular(isMe ? 4 : 18),
                 ),
-                border: Border.all(color: Colors.grey.shade600, width: 0.5),
+                border: Border.all(
+                    color: Theme.of(context).dividerColor,
+                    width: 0.5),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -467,13 +547,13 @@ class _ChatBubbelState extends State<ChatBubbel> {
                   Icon(
                     Icons.block,
                     size: 16,
-                    color: Colors.grey.shade400,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                   ),
                   const SizedBox(width: 8),
                   Text(
                     'This message was deleted',
                     style: TextStyle(
-                      color: Colors.grey.shade400,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                       fontStyle: FontStyle.italic,
                       fontSize: 14,
                     ),
@@ -486,7 +566,7 @@ class _ChatBubbelState extends State<ChatBubbel> {
               widget.time,
               style: TextStyle(
                 fontSize: 10,
-                color: Colors.grey.shade500,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
               ),
             ),
           ],
@@ -494,16 +574,17 @@ class _ChatBubbelState extends State<ChatBubbel> {
       );
     }
 
+    // Bubble colors - use theme colors
     var bubbleColor = isMe
-        ? Theme.of(context).colorScheme.primary
+        ? (isDark ? dSentBubbleColor : lSentBubbleColor)
         : Theme.of(context).colorScheme.primaryContainer;
 
-    // تمييز الرسالة الحالية في البحث
+    // Search highlight
     if (widget.isHighlighted) {
       bubbleColor = Colors.amber.shade700;
     } else if (widget.isSearchMatch) {
       bubbleColor = isMe
-          ? Theme.of(context).colorScheme.primary.withOpacity(0.8)
+          ? (isDark ? dSentBubbleColor : lSentBubbleColor).withOpacity(0.8)
           : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.8);
     }
 
@@ -513,6 +594,12 @@ class _ChatBubbelState extends State<ChatBubbel> {
     final hasAudio = widget.audioUrl.trim().isNotEmpty;
     final hasText = widget.message.trim().isNotEmpty;
 
+    // Text color based on bubble
+    final textColor = isMe ? Colors.white : Theme.of(context).colorScheme.onSurface;
+    final secondaryTextColor = isMe
+        ? Colors.white.withOpacity(0.7)
+        : Theme.of(context).colorScheme.onSurface.withOpacity(0.6);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
       child: Column(
@@ -521,213 +608,293 @@ class _ChatBubbelState extends State<ChatBubbel> {
         children: [
           GestureDetector(
             onTapDown: (details) => _tapDownDetails = details,
-            onLongPress: (widget.onDelete != null || widget.onEdit != null) && !widget.isDeleted
+            onLongPress: (widget.onDelete != null || widget.onEdit != null || widget.onPin != null || widget.onUnpin != null || widget.onForward != null) && !widget.isDeleted
                 ? () {
                     if (_tapDownDetails != null) {
                       _showMessageOptions(context, _tapDownDetails!);
                     }
                   }
                 : null,
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.75,
-                minWidth: hasAudio ? 200 : 80,
-              ),
-              decoration: BoxDecoration(
-                color: bubbleColor,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isMe ? 18 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 18),
-                ),
-                border: widget.isHighlighted
-                    ? Border.all(color: Colors.amber.shade300, width: 3)
-                    : null,
-                boxShadow: [
-                  BoxShadow(
-                    color: widget.isHighlighted
-                        ? Colors.amber.withOpacity(0.4)
-                        : Colors.black.withOpacity(0.08),
-                    blurRadius: widget.isHighlighted ? 12 : 8,
-                    offset: const Offset(0, 2),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (widget.isPinnedHighlight)
+                  Positioned(
+                    top: -8,
+                    right: isMe ? null : -8,
+                    left: isMe ? -8 : null,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.amber,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.amber.withOpacity(0.5),
+                            blurRadius: 8,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.push_pin,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                    ),
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isMe ? 18 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 18),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // الصور - عرض مفرد أو شبكة
-                    if (hasImage)
-                      hasMultipleImages
-                          ? _buildImageGrid(context, imageUrls)
-                          : _buildSingleImage(context, imageUrls.first),
-
-                    // الرسالة الصوتية
-                    if (hasAudio)
-                      Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // زر التشغيل/الإيقاف
-                            GestureDetector(
-                              onTap: _togglePlayPause,
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  _playerState == PlayerState.playing
-                                      ? Icons.pause_rounded
-                                      : Icons.play_arrow_rounded,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
+                Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    minWidth: hasAudio ? 200 : 80,
+                  ),
+                  decoration: BoxDecoration(
+                    color: bubbleColor,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(18),
+                      topRight: const Radius.circular(18),
+                      bottomLeft: Radius.circular(isMe ? 18 : 4),
+                      bottomRight: Radius.circular(isMe ? 4 : 18),
+                    ),
+                    border: widget.isHighlighted || widget.isPinnedHighlight
+                        ? Border.all(
+                            color: widget.isPinnedHighlight
+                                ? Colors.amber
+                                : Colors.amber.shade300,
+                            width: widget.isPinnedHighlight ? 2.5 : 3,
+                          )
+                        : null,
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.isHighlighted || widget.isPinnedHighlight
+                            ? Colors.amber.withOpacity(widget.isPinnedHighlight ? 0.6 : 0.4)
+                            : Colors.black.withOpacity(0.08),
+                        blurRadius: widget.isHighlighted || widget.isPinnedHighlight ? 12 : 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(18),
+                      topRight: const Radius.circular(18),
+                      bottomLeft: Radius.circular(isMe ? 18 : 4),
+                      bottomRight: Radius.circular(isMe ? 4 : 18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Forwarded indicator
+                        if (widget.isForwarded)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: (isMe ? Colors.white : Theme.of(context).colorScheme.onSurface).withOpacity(0.1),
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(18),
+                                topRight: Radius.circular(18),
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.shortcut,
+                                  size: 14,
+                                  color: secondaryTextColor,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Forwarded${widget.forwardedFrom != null ? ' from ${widget.forwardedFrom}' : ''}',
+                                  style: TextStyle(
+                                    color: secondaryTextColor,
+                                    fontSize: 11,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        // Images
+                        if (hasImage)
+                          hasMultipleImages
+                              ? _buildImageGrid(context, imageUrls)
+                              : _buildSingleImage(context, imageUrls.first),
 
-                            // شريط التقدم والمدة
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // شريط الموجة الصوتية
-                                  SizedBox(
-                                    height: 32,
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceEvenly,
-                                      children: List.generate(20, (index) {
-                                        final progress = _duration.inMilliseconds > 0
-                                            ? _position.inMilliseconds /
-                                                _duration.inMilliseconds
-                                            : 0.0;
-                                        final isActive = index / 20 <= progress;
-                                        final baseHeight = index % 3 == 0
-                                            ? 0.8
-                                            : index % 2 == 0
-                                                ? 0.5
-                                                : 0.3;
-                                        final waveHeight = 8 + 12 * baseHeight;
-
-                                        return Container(
-                                          width: 3,
-                                          height: waveHeight,
-                                          decoration: BoxDecoration(
-                                            color: isActive
-                                                ? Colors.white
-                                                : Colors.white.withOpacity(0.4),
-                                            borderRadius: BorderRadius.circular(2),
-                                          ),
-                                        );
-                                      }),
+                        // Voice message
+                        if (hasAudio)
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: _togglePlayPause,
+                                  child: Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: (isMe ? Colors.white : Theme.of(context).colorScheme.primary).withOpacity(0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      _playerState == PlayerState.playing
+                                          ? Icons.pause_rounded
+                                          : Icons.play_arrow_rounded,
+                                      color: textColor,
+                                      size: 28,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  // الوقت
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        _formatDuration(_position),
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.8),
-                                          fontSize: 11,
+                                      SizedBox(
+                                        height: 32,
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceEvenly,
+                                          children: List.generate(20, (index) {
+                                            final progress = _duration.inMilliseconds > 0
+                                                ? _position.inMilliseconds /
+                                                    _duration.inMilliseconds
+                                                : 0.0;
+                                            final isActive = index / 20 <= progress;
+                                            final baseHeight = index % 3 == 0
+                                                ? 0.8
+                                                : index % 2 == 0
+                                                    ? 0.5
+                                                    : 0.3;
+                                            final waveHeight = 8 + 12 * baseHeight;
+
+                                            return Container(
+                                              width: 3,
+                                              height: waveHeight,
+                                              decoration: BoxDecoration(
+                                                color: isActive
+                                                    ? textColor
+                                                    : textColor.withOpacity(0.4),
+                                                borderRadius: BorderRadius.circular(2),
+                                              ),
+                                            );
+                                          }),
                                         ),
                                       ),
-                                      Text(
-                                        _formatDuration(_duration),
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.8),
-                                          fontSize: 11,
-                                        ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            _formatDuration(_position),
+                                            style: TextStyle(
+                                              color: secondaryTextColor,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                          Text(
+                                            _formatDuration(_duration),
+                                            style: TextStyle(
+                                              color: secondaryTextColor,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        // Text message
+                        if (hasText)
+                          Padding(
+                            padding: EdgeInsets.only(
+                              left: 14,
+                              right: 14,
+                              top: hasImage || hasAudio ? 8 : 12,
+                              bottom: 8,
+                            ),
+                            child: Text(
+                              widget.message,
+                              style: TextStyle(
+                                color: textColor,
+                                fontSize: 15,
+                                height: 1.4,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
+                          ),
 
-                    // النص
-                    if (hasText)
-                      Padding(
-                        padding: EdgeInsets.only(
-                          left: 14,
-                          right: 14,
-                          top: hasImage || hasAudio ? 8 : 12,
-                          bottom: 8,
-                        ),
-                        child: Text(
-                          widget.message,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            height: 1.4,
+                        // Time, status, and edit indicator
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: 14,
+                            right: 14,
+                            bottom: 8,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (widget.isEdited) ...[
+                                Icon(
+                                  Icons.edit,
+                                  size: 12,
+                                  color: secondaryTextColor,
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                widget.time,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: secondaryTextColor,
+                                ),
+                              ),
+                              if (isMe) ...[
+                                const SizedBox(width: 4),
+                                // Show sync status if pending or failed, otherwise show read status
+                                if (widget.syncStatus == MessageSyncStatus.pending)
+                                  MessageStatusIndicator(
+                                    status: MessageSyncStatus.pending,
+                                    color: secondaryTextColor,
+                                    size: 16,
+                                  )
+                                else if (widget.syncStatus == MessageSyncStatus.uploading)
+                                  MessageStatusIndicator(
+                                    status: MessageSyncStatus.uploading,
+                                    color: secondaryTextColor,
+                                    size: 16,
+                                  )
+                                else if (widget.syncStatus == MessageSyncStatus.failed)
+                                  MessageStatusIndicator(
+                                    status: MessageSyncStatus.failed,
+                                    size: 16,
+                                    onRetry: widget.onRetry,
+                                  )
+                                else
+                                  Icon(
+                                    widget.status == "Read"
+                                        ? Icons.done_all
+                                        : Icons.done,
+                                    size: 16,
+                                    color: widget.status == "Read"
+                                        ? Colors.blue.shade300
+                                        : secondaryTextColor,
+                                  ),
+                              ],
+                            ],
                           ),
                         ),
-                      ),
-
-                    // الوقت وحالة القراءة وأيقونة التعديل
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        left: 14,
-                        right: 14,
-                        bottom: 8,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          // أيقونة التعديل
-                          if (widget.isEdited) ...[
-                            Icon(
-                              Icons.edit,
-                              size: 12,
-                              color: Colors.white.withOpacity(0.6),
-                            ),
-                            const SizedBox(width: 4),
-                          ],
-                          Text(
-                            widget.time,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.white.withOpacity(0.6),
-                            ),
-                          ),
-                          if (isMe) ...[
-                            const SizedBox(width: 4),
-                            Icon(
-                              widget.status == "Read"
-                                  ? Icons.done_all
-                                  : Icons.done,
-                              size: 16,
-                              color: widget.status == "Read"
-                                  ? Colors.blue.shade300
-                                  : Colors.white.withOpacity(0.6),
-                            ),
-                          ],
-                        ],
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -736,7 +903,7 @@ class _ChatBubbelState extends State<ChatBubbel> {
   }
 }
 
-/// معرض عرض الصور مع التمرير
+/// Image gallery viewer
 class _ImageGalleryViewer extends StatefulWidget {
   final List<String> images;
   final int initialIndex;
@@ -817,7 +984,7 @@ class _ImageGalleryViewerState extends State<_ImageGalleryViewer> {
                     Icon(Icons.broken_image, color: Colors.white54, size: 60),
                     SizedBox(height: 16),
                     Text(
-                      'فشل تحميل الصورة',
+                      'Failed to load image',
                       style: TextStyle(color: Colors.white54),
                     ),
                   ],

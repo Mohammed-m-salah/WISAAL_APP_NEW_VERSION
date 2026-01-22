@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
 import 'package:wissal_app/controller/auth_controller/logout_controller.dart';
 import 'package:wissal_app/pages/profile_page.dart/widgets/profile_info.dart';
+import 'package:wissal_app/pages/profile_page.dart/widgets/settings_section.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -13,19 +13,22 @@ class ProfilePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        title: Text('Profile'),
+        title: Text('profile'.tr),
         actions: [
           IconButton(
               onPressed: () {
                 logoutcontroller.LogOut();
               },
-              icon: Icon(Icons.logout))
+              icon: const Icon(Icons.logout))
         ],
       ),
-      body: Column(
-        children: [
-          ProfileInfo(),
-        ],
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            const ProfileInfo(),
+            const SettingsSection(),
+          ],
+        ),
       ),
     );
   }

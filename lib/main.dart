@@ -8,8 +8,17 @@ import 'package:app_links/app_links.dart';
 import 'package:wissal_app/config/page_path.dart';
 import 'package:wissal_app/config/thems.dart';
 import 'package:wissal_app/controller/call_controller/call_controller.dart';
+import 'package:wissal_app/controller/theme_controller/theme_controller.dart';
+import 'package:wissal_app/controller/locale_controller/locale_controller.dart';
+import 'package:wissal_app/localization/app_translations.dart';
 import 'package:wissal_app/pages/splash_page/splash_page.dart';
 import 'package:wissal_app/pages/welcom_page/welcom_page.dart';
+
+// Offline mode services
+import 'package:wissal_app/services/local_database/local_database_service.dart';
+import 'package:wissal_app/services/connectivity/connectivity_service.dart';
+import 'package:wissal_app/services/sync/sync_service.dart';
+import 'package:wissal_app/services/offline_queue/offline_queue_service.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -25,6 +34,22 @@ Future<void> initNotifications() async {
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 }
 
+Future<void> initOfflineServices() async {
+  // Initialize local database first
+  await Get.putAsync(() => LocalDatabaseService().init(), permanent: true);
+
+  // Initialize connectivity service
+  await Get.putAsync(() => ConnectivityService().init(), permanent: true);
+
+  // Initialize offline queue service
+  await Get.putAsync(() => OfflineQueueService().init(), permanent: true);
+
+  // Initialize sync service
+  await Get.putAsync(() => SyncService().init(), permanent: true);
+
+  print('✅ All offline services initialized');
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -35,6 +60,13 @@ Future<void> main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNieWdwY2JneWxpcGNveHZ1b2dsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMDM1NzIsImV4cCI6MjA4Mzc3OTU3Mn0.LfLHMpw1LzjMwG1aFOpGRh9qeqRbRX2NdKjb0Mfz_co',
   );
+
+  // Initialize offline mode services
+  await initOfflineServices();
+
+  // Initialize controllers
+  Get.put(ThemeController(), permanent: true);
+  Get.put(LocaleController(), permanent: true);
 
   final prefs = await SharedPreferences.getInstance();
   final bool isFirstTime = prefs.getBool('is_first_time') ?? true;
@@ -66,6 +98,8 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   late AppLinks _appLinks;
+  final ThemeController _themeController = Get.find<ThemeController>();
+  final LocaleController _localeController = Get.find<LocaleController>();
 
   @override
   void initState() {
@@ -94,7 +128,7 @@ class _MyAppState extends State<MyApp> {
       // Supabase سيتعامل مع الجلسة تلقائياً
       final session = Supabase.instance.client.auth.currentSession;
       if (session != null) {
-        Get.snackbar("تم التأكيد", "تم تأكيد بريدك الإلكتروني بنجاح!");
+        Get.snackbar('email_verified'.tr, 'login_success'.tr);
         Get.offAllNamed('/homepage');
       }
     }
@@ -109,6 +143,10 @@ class _MyAppState extends State<MyApp> {
 
       if (event == AuthChangeEvent.signedIn && session != null) {
         // المستخدم سجل دخوله بنجاح
+        // Trigger sync when user signs in
+        if (Get.isRegistered<SyncService>()) {
+          Get.find<SyncService>().syncAll();
+        }
         Get.offAllNamed('/homepage');
       }
     });
@@ -117,17 +155,20 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     Get.put(CallController());
-    return GetMaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: lightThem,
-      darkTheme: darktThem,
-      themeMode: ThemeMode.dark,
-      getPages: pagePath,
-      home: widget.isFirstTime
-          ? const WelcomPage()
-          : widget.isLoggedIn
-              ? const SplashPage()
-              : const WelcomPage(),
-    );
+    return Obx(() => GetMaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: lightThem,
+          darkTheme: darktThem,
+          themeMode: _themeController.themeMode,
+          translations: AppTranslations(),
+          locale: _localeController.locale,
+          fallbackLocale: const Locale('en', 'US'),
+          getPages: pagePath,
+          home: widget.isFirstTime
+              ? const WelcomPage()
+              : widget.isLoggedIn
+                  ? const SplashPage()
+                  : const WelcomPage(),
+        ));
   }
 }

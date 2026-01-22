@@ -1,22 +1,70 @@
 import 'dart:convert';
+import 'package:hive/hive.dart';
+import 'message_sync_status.dart';
 
-class ChatModel {
+part 'chat_model.g.dart';
+
+@HiveType(typeId: 0)
+class ChatModel extends HiveObject {
+  @HiveField(0)
   String? id;
+
+  @HiveField(1)
   String? message;
+
+  @HiveField(2)
   String? senderName;
+
+  @HiveField(3)
   String? senderId;
+
+  @HiveField(4)
   String? reciverId;
+
+  @HiveField(5)
   String? timeStamp;
+
+  @HiveField(6)
   String? readStatus;
+
+  @HiveField(7)
   String? imageUrl;
+
+  @HiveField(8)
   List<String>? imageUrls;
+
+  @HiveField(9)
   String? videoUrl;
+
+  @HiveField(10)
   String? audioUrl;
+
+  @HiveField(11)
   String? documentUrl;
+
+  @HiveField(12)
   List<String>? reactions;
+
+  @HiveField(13)
   List<dynamic>? replies;
+
+  @HiveField(14)
   bool? isDeleted;
+
+  @HiveField(15)
   bool? isEdited;
+
+  @HiveField(16)
+  bool? isForwarded;
+
+  @HiveField(17)
+  String? forwardedFrom;
+
+  @HiveField(18)
+  MessageSyncStatus? syncStatus;
+
+  @HiveField(19)
+  String? roomId;
 
   ChatModel({
     this.id,
@@ -35,6 +83,10 @@ class ChatModel {
     this.replies,
     this.isDeleted = false,
     this.isEdited = false,
+    this.isForwarded = false,
+    this.forwardedFrom,
+    this.syncStatus,
+    this.roomId,
   });
 
   static List<String> _parseStringList(dynamic value) {
@@ -95,6 +147,10 @@ class ChatModel {
       replies: _parseDynamicList(json['replies']),
       isDeleted: json['isDeleted'] ?? false,
       isEdited: json['isEdited'] ?? false,
+      isForwarded: json['isForwarded'] ?? false,
+      forwardedFrom: json['forwardedFrom'],
+      syncStatus: MessageSyncStatus.sent,
+      roomId: json['roomId'],
     );
   }
 
@@ -107,6 +163,14 @@ class ChatModel {
   bool get hasImages => imageUrls != null && imageUrls!.isNotEmpty;
 
   bool get hasMultipleImages => imageUrls != null && imageUrls!.length > 1;
+
+  bool get isPending => syncStatus == MessageSyncStatus.pending;
+
+  bool get isFailed => syncStatus == MessageSyncStatus.failed;
+
+  bool get isSent => syncStatus == MessageSyncStatus.sent ||
+      syncStatus == MessageSyncStatus.delivered ||
+      syncStatus == MessageSyncStatus.read;
 
   Map<String, dynamic> toMap() {
     return {
@@ -125,6 +189,55 @@ class ChatModel {
       'replies': replies ?? [],
       'isDeleted': isDeleted ?? false,
       'isEdited': isEdited ?? false,
+      'isForwarded': isForwarded ?? false,
+      'forwardedFrom': forwardedFrom,
+      'roomId': roomId,
     };
+  }
+
+  ChatModel copyWith({
+    String? id,
+    String? message,
+    String? senderName,
+    String? senderId,
+    String? reciverId,
+    String? timeStamp,
+    String? readStatus,
+    String? imageUrl,
+    List<String>? imageUrls,
+    String? videoUrl,
+    String? audioUrl,
+    String? documentUrl,
+    List<String>? reactions,
+    List<dynamic>? replies,
+    bool? isDeleted,
+    bool? isEdited,
+    bool? isForwarded,
+    String? forwardedFrom,
+    MessageSyncStatus? syncStatus,
+    String? roomId,
+  }) {
+    return ChatModel(
+      id: id ?? this.id,
+      message: message ?? this.message,
+      senderName: senderName ?? this.senderName,
+      senderId: senderId ?? this.senderId,
+      reciverId: reciverId ?? this.reciverId,
+      timeStamp: timeStamp ?? this.timeStamp,
+      readStatus: readStatus ?? this.readStatus,
+      imageUrl: imageUrl ?? this.imageUrl,
+      imageUrls: imageUrls ?? this.imageUrls,
+      videoUrl: videoUrl ?? this.videoUrl,
+      audioUrl: audioUrl ?? this.audioUrl,
+      documentUrl: documentUrl ?? this.documentUrl,
+      reactions: reactions ?? this.reactions,
+      replies: replies ?? this.replies,
+      isDeleted: isDeleted ?? this.isDeleted,
+      isEdited: isEdited ?? this.isEdited,
+      isForwarded: isForwarded ?? this.isForwarded,
+      forwardedFrom: forwardedFrom ?? this.forwardedFrom,
+      syncStatus: syncStatus ?? this.syncStatus,
+      roomId: roomId ?? this.roomId,
+    );
   }
 }

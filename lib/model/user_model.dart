@@ -1,15 +1,38 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
+import 'package:hive/hive.dart';
 
-class UserModel {
+part 'user_model.g.dart';
+
+@HiveType(typeId: 2)
+class UserModel extends HiveObject {
+  @HiveField(0)
   final String? id;
+
+  @HiveField(1)
   final String? name;
+
+  @HiveField(2)
   final String? email;
+
+  @HiveField(3)
   final String? profileimage;
+
+  @HiveField(4)
   final String? phonenumber;
+
+  @HiveField(5)
   final String? about;
+
+  @HiveField(6)
   final String? createdAt;
+
+  @HiveField(7)
   final String? lastOnlineStatus;
+
+  @HiveField(8)
   final bool? status;
+
+  @HiveField(9)
   final String? role;
 
   UserModel({
@@ -28,7 +51,7 @@ class UserModel {
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       id: json['id'],
-      name: json['name'] as String?, // تأكد من هذا السطر
+      name: json['name'] as String?,
       email: json['email'],
       profileimage: json['profileimage'],
       phonenumber: json['phonenumber'],

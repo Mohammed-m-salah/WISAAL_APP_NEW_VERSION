@@ -1,21 +1,53 @@
 import 'dart:convert';
-
+import 'package:hive/hive.dart';
 import 'package:wissal_app/model/user_model.dart';
-
 import 'chat_model.dart';
 
-class ChatRoomModel {
+part 'ChatRoomModel.g.dart';
+
+@HiveType(typeId: 1)
+class ChatRoomModel extends HiveObject {
+  @HiveField(0)
   String? id;
+
+  @HiveField(1)
   String? senderId;
+
+  @HiveField(2)
   String? reciverId;
+
+  @HiveField(3)
   UserModel? sender;
+
+  @HiveField(4)
   UserModel? receiver;
+
+  @HiveField(5)
   List<ChatModel>? messages;
+
+  @HiveField(6)
   int? unReadMessageNO;
+
+  @HiveField(7)
   String? lastMessage;
+
+  @HiveField(8)
   DateTime? lastMessageTimeStamp;
+
+  @HiveField(9)
   String? timeStamp;
-  bool? isTyping = false;
+
+  @HiveField(10)
+  bool? isTyping;
+
+  @HiveField(11)
+  List<String>? pinnedMessageIds;
+
+  @HiveField(12)
+  bool isPinned;
+
+  @HiveField(13)
+  int pinOrder;
 
   ChatRoomModel({
     this.id,
@@ -28,8 +60,12 @@ class ChatRoomModel {
     this.lastMessage,
     this.lastMessageTimeStamp,
     this.timeStamp,
-    this.isTyping,
+    this.isTyping = false,
+    this.pinnedMessageIds,
+    this.isPinned = false,
+    this.pinOrder = 0,
   });
+
   factory ChatRoomModel.fromJson(Map<String, dynamic> json) {
     List<ChatModel> messagesList = [];
 
@@ -82,6 +118,11 @@ class ChatRoomModel {
           ? DateTime.tryParse(json['last_message_time_stamp'])
           : null,
       timeStamp: json['timeStamp'] ?? '',
+      pinnedMessageIds: json['pinned_message_ids'] != null
+          ? List<String>.from(jsonDecode(json['pinned_message_ids']))
+          : null,
+      isPinned: json['is_pinned'] ?? false,
+      pinOrder: json['pin_order'] ?? 0,
     );
   }
 
@@ -97,6 +138,9 @@ class ChatRoomModel {
       'last_message': lastMessage,
       'last_message_time_stamp': lastMessageTimeStamp?.toIso8601String(),
       'timeStamp': timeStamp,
+      'pinned_message_ids': pinnedMessageIds != null ? jsonEncode(pinnedMessageIds) : null,
+      'is_pinned': isPinned,
+      'pin_order': pinOrder,
     };
   }
 }

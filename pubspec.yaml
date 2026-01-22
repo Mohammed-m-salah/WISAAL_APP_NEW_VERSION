@@ -46,13 +46,17 @@ dependencies:
   flutter_launcher_icons: ^0.13.1
   shared_preferences: ^2.2.2
   path_provider: ^2.1.2
-  audioplayers: 
+  audioplayers:
   just_audio: ^0.10.5
   chat_bubbles: ^1.5.0
   flutter_local_notifications: ^17.2.4
   zego_uikit_prebuilt_call: ^4.21.0
   file_picker:
-  app_links: ^6.3.3 
+  app_links: ^6.3.3
+  # Offline mode dependencies
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  connectivity_plus: ^6.0.3 
 
 
 
@@ -70,12 +74,27 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^2.0.0
+  # Hive code generation
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.8
 flutter_launcher_icons:
-  android: "assets/icons/new_logo.jpg"
+  android: "ic_launcher"
   ios: true
-  
   image_path: "assets/icons/new_logo.jpg"
-  min_sdk_android: 21 # android min sdk min:16, default 21  
+  min_sdk_android: 21
+  # Adaptive icons for Android 8.0+
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icons/new_logo.jpg"
+  # Remove alpha channel for better compatibility
+  remove_alpha_ios: true
+  # Web favicon
+  web:
+    generate: true
+    image_path: "assets/icons/new_logo.jpg"
+  # Windows
+  windows:
+    generate: true
+    image_path: "assets/icons/new_logo.jpg"  
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

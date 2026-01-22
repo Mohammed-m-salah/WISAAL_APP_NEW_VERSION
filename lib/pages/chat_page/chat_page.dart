@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -14,6 +13,10 @@ import 'package:wissal_app/pages/chat_page/widget/chat_pubbel.dart';
 import 'package:wissal_app/pages/user_profile/profile_page.dart';
 import '../../controller/call_controller/call_controller.dart';
 import '../../controller/status_controller/status_controller.dart';
+import '../../controller/contact_controller/contact_controller.dart';
+import 'package:wissal_app/config/colors.dart';
+import 'package:wissal_app/widgets/connectivity_banner.dart';
+import 'package:wissal_app/model/message_sync_status.dart';
 
 class ChatPage extends StatefulWidget {
   final UserModel userModel;
@@ -30,6 +33,7 @@ class _ChatPageState extends State<ChatPage>
   late StatusController statusController;
   late ProfileController profileController;
   late ImagePickerController imagePickerController;
+  late ContactController contactController;
   final TextEditingController messageController = TextEditingController();
   final TextEditingController searchController = TextEditingController();
   final ScrollController scrollController = ScrollController();
@@ -51,6 +55,7 @@ class _ChatPageState extends State<ChatPage>
     statusController = Get.put(StatusController());
     profileController = Get.put(ProfileController());
     imagePickerController = Get.put(ImagePickerController());
+    contactController = Get.put(ContactController());
 
     _typingAnimationController = AnimationController(
       vsync: this,
@@ -74,6 +79,8 @@ class _ChatPageState extends State<ChatPage>
       if (roomId.isNotEmpty) {
         chatcontroller.currentChatRoomId.value = roomId;
         chatcontroller.listenToTypingStatus(widget.userModel.id!);
+        // تحميل الرسائل المثبتة
+        chatcontroller.loadPinnedMessages(roomId);
       } else {
         print("⚠️ لم يتمكن من إنشاء Room ID");
         Get.back();
@@ -93,6 +100,7 @@ class _ChatPageState extends State<ChatPage>
     messageController.dispose();
     searchController.dispose();
     scrollController.dispose();
+    _pinnedPageController?.dispose();
     super.dispose();
   }
 
@@ -160,6 +168,275 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
+  // متغير لتتبع الرسالة المثبتة الحالية
+  int _currentPinnedIndex = 0;
+  PageController? _pinnedPageController;
+
+  // قائمة الرسائل للسكرول
+  List<ChatModel> _allMessagesList = [];
+
+  // ID الرسالة المثبتة المحددة للـ highlight
+  String? _pinnedHighlightId;
+
+  /// السكرول إلى رسالة معينة بناءً على ID مع highlight
+  void _scrollToMessage(String messageId) {
+    final index = _allMessagesList.indexWhere((m) => m.id == messageId);
+    if (index != -1 && scrollController.hasClients) {
+      // تفعيل الـ highlight
+      setState(() {
+        _pinnedHighlightId = messageId;
+      });
+
+      // حساب الموقع التقريبي (كل رسالة ~80 بكسل)
+      final position = index * 80.0;
+      scrollController.animateTo(
+        position,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+
+      // إزالة الـ highlight بعد 2 ثانية
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _pinnedHighlightId = null;
+          });
+        }
+      });
+
+      // الانتقال للرسالة المثبتة التالية
+      final pinnedList = chatcontroller.pinnedMessages;
+      if (pinnedList.length > 1) {
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted && _pinnedPageController != null) {
+            final nextIndex = (_currentPinnedIndex + 1) % pinnedList.length;
+            _pinnedPageController!.animateToPage(
+              nextIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+          }
+        });
+      }
+    }
+  }
+
+  /// ويدجت الرسائل المثبتة (نقاط عمودية + سكرول للرسالة)
+  Widget _buildPinnedMessageBanner() {
+    return Obx(() {
+      final pinnedList = chatcontroller.pinnedMessages;
+      if (pinnedList.isEmpty) return const SizedBox.shrink();
+
+      // إنشاء PageController إذا لم يكن موجوداً
+      _pinnedPageController ??= PageController();
+
+      return Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color:
+              Theme.of(context).colorScheme.primaryContainer.withOpacity(0.95),
+          border: Border(
+            bottom: BorderSide(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            // النقاط العمودية على اليسار
+            if (pinnedList.length > 1)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(pinnedList.length, (index) {
+                    final isActive = index == _currentPinnedIndex;
+                    return GestureDetector(
+                      onTap: () {
+                        _pinnedPageController?.animateToPage(
+                          index,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.symmetric(vertical: 2),
+                        width: 6,
+                        height: isActive ? 20 : 10,
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? Colors.amber
+                              : Colors.amber.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            // محتوى الرسالة المثبتة
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // العنوان مع عدد الرسائل
+                  Padding(
+                    padding: const EdgeInsets.only(
+                        left: 8, right: 12, top: 6, bottom: 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Icon(Icons.push_pin,
+                              color: Colors.amber, size: 14),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${pinnedList.length} Pinned',
+                          style: TextStyle(
+                            color: Colors.amber.shade300,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (pinnedList.length > 1)
+                          GestureDetector(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16)),
+                                  title: const Text('إلغاء تثبيت الكل'),
+                                  content: Text(
+                                      'هل تريد إلغاء تثبيت ${pinnedList.length} رسائل؟'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('إلغاء'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        chatcontroller.unpinAllMessages(
+                                            chatcontroller
+                                                .currentChatRoomId.value);
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red),
+                                      child: const Text('إلغاء الكل',
+                                          style:
+                                              TextStyle(color: Colors.white)),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            child: Text(
+                              'Unpin All',
+                              style: TextStyle(
+                                  color: Colors.red.shade300, fontSize: 10),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // الرسالة المثبتة
+                  SizedBox(
+                    height: 40,
+                    child: PageView.builder(
+                      controller: _pinnedPageController,
+                      itemCount: pinnedList.length,
+                      onPageChanged: (index) {
+                        setState(() {
+                          _currentPinnedIndex = index;
+                        });
+                      },
+                      itemBuilder: (context, index) {
+                        final pinned = pinnedList[index];
+                        String displayText = pinned.message ?? '';
+                        if (displayText.isEmpty) {
+                          if (pinned.imageUrl?.isNotEmpty == true) {
+                            displayText = '📷 صورة';
+                          } else if (pinned.audioUrl?.isNotEmpty == true) {
+                            displayText = '🎤 رسالة صوتية';
+                          }
+                        }
+
+                        return GestureDetector(
+                          onTap: () {
+                            // السكرول للرسالة في المحادثة
+                            _scrollToMessage(pinned.id!);
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(
+                                left: 4, right: 12, bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: Colors.amber.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    displayText,
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 12),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                GestureDetector(
+                                  onTap: () {
+                                    chatcontroller.unpinMessage(
+                                      pinned.id!,
+                                      chatcontroller.currentChatRoomId.value,
+                                    );
+                                    if (_currentPinnedIndex > 0) {
+                                      setState(() {
+                                        _currentPinnedIndex--;
+                                      });
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.close,
+                                        color: Colors.white70, size: 14),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
   Widget _buildTypingDots() {
     return SizedBox(
       width: 30,
@@ -213,7 +490,7 @@ class _ChatPageState extends State<ChatPage>
         elevation: 2,
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onPrimary),
           onPressed: () {
             if (isSearching) {
               setState(() {
@@ -233,10 +510,10 @@ class _ChatPageState extends State<ChatPage>
                     child: TextField(
                       controller: searchController,
                       autofocus: true,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        hintText: 'Search messages...',
-                        hintStyle: TextStyle(color: Colors.white54),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
+                      decoration: InputDecoration(
+                        hintText: 'search'.tr,
+                        hintStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.6)),
                         border: InputBorder.none,
                       ),
                       onChanged: (value) {
@@ -252,13 +529,12 @@ class _ChatPageState extends State<ChatPage>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         '${currentSearchIndex + 1}/${searchMatchIndices.length}',
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 12),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onPrimary, fontSize: 12),
                       ),
                     ),
                 ],
@@ -290,7 +566,7 @@ class _ChatPageState extends State<ChatPage>
                                 .textTheme
                                 .titleMedium
                                 ?.copyWith(
-                                  color: Colors.white,
+                                  color: Theme.of(context).colorScheme.onPrimary,
                                   fontWeight: FontWeight.bold,
                                 ),
                           ),
@@ -300,7 +576,7 @@ class _ChatPageState extends State<ChatPage>
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    "يكتب",
+                                    'typing'.tr,
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleSmall
@@ -423,6 +699,10 @@ class _ChatPageState extends State<ChatPage>
       ),
       body: Column(
         children: [
+          // Connectivity banner for offline status
+          const ConnectivityBanner(),
+          // الرسالة المثبتة
+          _buildPinnedMessageBanner(),
           Expanded(
             child: Stack(
               children: [
@@ -479,6 +759,7 @@ class _ChatPageState extends State<ChatPage>
 
                     final messages = snapshot.data!.reversed.toList();
                     allMessages = messages;
+                    _allMessagesList = messages; // للسكرول للرسالة المثبتة
 
                     // تحديث فهارس البحث
                     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -578,6 +859,8 @@ class _ChatPageState extends State<ChatPage>
                                 audioUrl: message.audioUrl ?? "",
                                 isHighlighted: isCurrentSearchMatch,
                                 isSearchMatch: isSearchMatch,
+                                isPinnedHighlight:
+                                    _pinnedHighlightId == message.id,
                                 message: message.message ?? '',
                                 isComming: isMyMessage,
                                 iscolor: Colors.amber,
@@ -586,11 +869,54 @@ class _ChatPageState extends State<ChatPage>
                                         DateTime.parse(message.timeStamp!),
                                       )
                                     : '',
-                                status: "Read",
+                                status: message.readStatus ?? "Read",
                                 imgUrl: message.imageUrl ?? "",
                                 imageUrls: message.imageUrls,
                                 isDeleted: message.isDeleted ?? false,
                                 isEdited: message.isEdited ?? false,
+                                isForwarded: message.isForwarded ?? false,
+                                forwardedFrom: message.forwardedFrom,
+                                syncStatus: message.syncStatus,
+                                onRetry: message.syncStatus == MessageSyncStatus.failed
+                                    ? () => chatcontroller.retryFailedMessage(message.id!)
+                                    : null,
+                                isPinned: chatcontroller
+                                    .isMessagePinned(message.id ?? ''),
+                                onPin: !(message.isDeleted ?? false)
+                                    ? () {
+                                        String pinText = message.message ?? '';
+                                        if (pinText.isEmpty) {
+                                          if (message.imageUrl?.isNotEmpty ==
+                                              true) {
+                                            pinText = '📷 photo';
+                                          } else if (message
+                                                  .audioUrl?.isNotEmpty ==
+                                              true) {
+                                            pinText = '🎤 voice message';
+                                          }
+                                        }
+                                        chatcontroller.pinMessage(
+                                          message.id!,
+                                          pinText,
+                                          chatcontroller
+                                              .currentChatRoomId.value,
+                                        );
+                                      }
+                                    : null,
+                                onUnpin: !(message.isDeleted ?? false)
+                                    ? () {
+                                        chatcontroller.unpinMessage(
+                                          message.id!,
+                                          chatcontroller
+                                              .currentChatRoomId.value,
+                                        );
+                                      }
+                                    : null,
+                                onForward: !(message.isDeleted ?? false)
+                                    ? () {
+                                        _showForwardDialog(message);
+                                      }
+                                    : null,
                                 onDelete: isMyMessage &&
                                         !(message.isDeleted ?? false)
                                     ? () {
@@ -1149,18 +1475,18 @@ class _ChatPageState extends State<ChatPage>
                                   ),
                           ),
 
-                          // حقل النص
+                          // Text field
                           Expanded(
                             child: TextField(
                               controller: messageController,
                               maxLines: 5,
                               minLines: 1,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: const InputDecoration(
-                                hintText: 'Write a message...',
-                                hintStyle: TextStyle(color: Colors.white54),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
+                              decoration: InputDecoration(
+                                hintText: 'type_message'.tr,
+                                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.6)),
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(
+                                contentPadding: const EdgeInsets.symmetric(
                                   vertical: 12,
                                   horizontal: 8,
                                 ),
@@ -1253,6 +1579,121 @@ class _ChatPageState extends State<ChatPage>
           }),
         ],
       ),
+    );
+  }
+
+  /// عرض قائمة المحادثات لتحويل الرسالة
+  void _showForwardDialog(ChatModel message) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.shortcut, color: Colors.green),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Forward to...',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: Obx(() {
+                  final chatRooms = contactController.chatRoomList;
+                  if (chatRooms.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.chat_bubble_outline,
+                              size: 48, color: Colors.grey.shade400),
+                          const SizedBox(height: 12),
+                          Text(
+                            'لا توجد محادثات',
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    itemCount: chatRooms.length,
+                    itemBuilder: (context, index) {
+                      final room = chatRooms[index];
+                      final otherUser = room.receiver;
+                      if (otherUser == null ||
+                          otherUser.id == widget.userModel.id) {
+                        return const SizedBox.shrink();
+                      }
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: NetworkImage(
+                            otherUser.profileimage ??
+                                'https://i.ibb.co/V04vrTtV/blank-profile-picture-973460-1280.png',
+                          ),
+                        ),
+                        title: Text(
+                          otherUser.name ?? 'Unknown',
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        subtitle: Text(
+                          room.lastMessage ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: Colors.grey.shade600, fontSize: 13),
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () async {
+                          Navigator.pop(context);
+                          await chatcontroller.forwardMessage(
+                            message,
+                            otherUser.id!,
+                            otherUser,
+                          );
+                        },
+                      );
+                    },
+                  );
+                }),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
