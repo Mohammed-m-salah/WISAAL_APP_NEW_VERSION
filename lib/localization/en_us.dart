@@ -108,14 +108,26 @@ const Map<String, String> enUS = {
   // Contacts
   'contacts': 'Contacts',
   'add_contact': 'Add Contact',
+  'new_contact': 'New Contact',
+  'add_new_contact': 'Add a new friend',
+  'search_contacts': 'Search contacts...',
+  'contacts_on_app': 'Contacts on Wisaal',
   'no_contacts': 'No contacts yet',
+  'invite_friends': 'Invite your friends to the app',
   'saved_contacts': 'Saved Contacts',
   'contact_saved': 'Contact saved',
   'contact_deleted': 'Contact deleted',
+  'hey_there': 'Hey there!',
+  'you': 'You',
+  'user': 'User',
+  'add': 'Add',
+  'login_required': 'You must login first',
 
   // Groups
   'groups': 'Groups',
   'create_group': 'Create Group',
+  'new_group': 'New Group',
+  'create_new_group': 'Create a group with friends',
   'group_name': 'Group Name',
   'add_members': 'Add Members',
   'members': 'Members',
@@ -162,7 +174,9 @@ const Map<String, String> enUS = {
   // Home
   'home': 'Home',
   'all_chats': 'All Chats',
+  'all_groups': 'All Groups',
   'recent': 'Recent',
+  'no_results': 'No results',
 
   // Status
   'status': 'Status',
@@ -185,4 +199,37 @@ const Map<String, String> enUS = {
   'block_user': 'Block User',
   'block_user_confirm': 'Are you sure you want to block this user?',
   'unblock_user': 'Unblock User',
+
+  // Search & Add Contact
+  'cannot_add_yourself': 'You cannot add yourself',
+  'user_found': 'User found successfully',
+  'user_not_found': 'User not found',
+  'search_error': 'Error while searching',
+
+  // Pinned Chats
+  'pinned_chats': 'Pinned Chats',
+  'long_press_to_drag': 'Long press to drag',
+
+  // Archived Chats
+  'archive': 'Archive',
+  'unarchive': 'Unarchive',
+  'archived_chats': 'Archived Chats',
+  'no_archived_chats': 'No archived chats',
+  'archived_chats_hint': 'Swipe left on a chat to archive it',
+  'chat_archived': 'Chat archived',
+  'chat_unarchived': 'Chat unarchived',
+
+  // User Profile & Shared Media
+  'media': 'Media',
+  'docs': 'Docs',
+  'links': 'Links',
+  'message': 'Message',
+  'call': 'Call',
+  'report': 'Report',
+  'no_shared_media': 'No shared media',
+  'no_shared_audio': 'No shared voice messages',
+  'no_shared_docs': 'No shared documents',
+  'no_shared_links': 'No shared links',
+  'shared_media': 'Shared Media',
+  'view_profile': 'View Profile',
 };

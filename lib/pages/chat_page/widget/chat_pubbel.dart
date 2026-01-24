@@ -857,35 +857,15 @@ class _ChatBubbelState extends State<ChatBubbel> {
                               ),
                               if (isMe) ...[
                                 const SizedBox(width: 4),
-                                // Show sync status if pending or failed, otherwise show read status
-                                if (widget.syncStatus == MessageSyncStatus.pending)
-                                  MessageStatusIndicator(
-                                    status: MessageSyncStatus.pending,
-                                    color: secondaryTextColor,
-                                    size: 16,
-                                  )
-                                else if (widget.syncStatus == MessageSyncStatus.uploading)
-                                  MessageStatusIndicator(
-                                    status: MessageSyncStatus.uploading,
-                                    color: secondaryTextColor,
-                                    size: 16,
-                                  )
-                                else if (widget.syncStatus == MessageSyncStatus.failed)
-                                  MessageStatusIndicator(
-                                    status: MessageSyncStatus.failed,
-                                    size: 16,
-                                    onRetry: widget.onRetry,
-                                  )
-                                else
-                                  Icon(
-                                    widget.status == "Read"
-                                        ? Icons.done_all
-                                        : Icons.done,
-                                    size: 16,
-                                    color: widget.status == "Read"
-                                        ? Colors.blue.shade300
-                                        : secondaryTextColor,
-                                  ),
+                                // مؤشر حالة الرسالة الموحد
+                                MessageStatusIndicator(
+                                  status: widget.syncStatus,
+                                  readStatus: widget.status,
+                                  size: 16,
+                                  onRetry: widget.syncStatus == MessageSyncStatus.failed
+                                      ? widget.onRetry
+                                      : null,
+                                ),
                               ],
                             ],
                           ),

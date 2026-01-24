@@ -49,6 +49,9 @@ class ChatRoomModel extends HiveObject {
   @HiveField(13)
   int pinOrder;
 
+  @HiveField(14)
+  bool isArchived;
+
   ChatRoomModel({
     this.id,
     this.senderId,
@@ -64,6 +67,7 @@ class ChatRoomModel extends HiveObject {
     this.pinnedMessageIds,
     this.isPinned = false,
     this.pinOrder = 0,
+    this.isArchived = false,
   });
 
   factory ChatRoomModel.fromJson(Map<String, dynamic> json) {
@@ -123,6 +127,7 @@ class ChatRoomModel extends HiveObject {
           : null,
       isPinned: json['is_pinned'] ?? false,
       pinOrder: json['pin_order'] ?? 0,
+      isArchived: json['is_archived'] ?? false,
     );
   }
 
@@ -141,6 +146,7 @@ class ChatRoomModel extends HiveObject {
       'pinned_message_ids': pinnedMessageIds != null ? jsonEncode(pinnedMessageIds) : null,
       'is_pinned': isPinned,
       'pin_order': pinOrder,
+      'is_archived': isArchived,
     };
   }
 }

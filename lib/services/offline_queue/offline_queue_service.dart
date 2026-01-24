@@ -23,16 +23,13 @@ class OfflineQueueService extends GetxService {
     _localDb = Get.find<LocalDatabaseService>();
     _connectivity = Get.find<ConnectivityService>();
 
-    // Update pending count
     _updatePendingCount();
 
-    // Register callback for when connection is restored
     _connectivity.onConnected(() {
       print('🔄 Connection restored - Processing pending queue...');
       processQueue();
     });
 
-    // Start periodic retry for failed messages
     _startRetryTimer();
 
     print('✅ OfflineQueueService initialized - Pending: ${pendingCount.value}');
@@ -181,7 +178,6 @@ class OfflineQueueService extends GetxService {
     print('🔄 Retrying ${failedMessages.length} failed messages...');
 
     for (final message in failedMessages) {
-      // Check if enough time has passed for retry (exponential backoff)
       if (message.lastRetryAt != null) {
         final timeSinceLastRetry =
             DateTime.now().difference(message.lastRetryAt!);

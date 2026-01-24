@@ -1,5 +1,6 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 class ChatTile extends StatelessWidget {
   final String imgUrl;
@@ -7,9 +8,12 @@ class ChatTile extends StatelessWidget {
   final String lastChat;
   final String lastTime;
   final bool isPinned;
+  final bool isArchived;
   final VoidCallback? onPin;
   final VoidCallback? onUnpin;
   final VoidCallback? onDelete;
+  final VoidCallback? onArchive;
+  final VoidCallback? onUnarchive;
 
   const ChatTile({
     Key? key,
@@ -18,9 +22,12 @@ class ChatTile extends StatelessWidget {
     required this.lastChat,
     required this.lastTime,
     this.isPinned = false,
+    this.isArchived = false,
     this.onPin,
     this.onUnpin,
     this.onDelete,
+    this.onArchive,
+    this.onUnarchive,
   }) : super(key: key);
 
   void _showOptionsMenu(BuildContext context) {
@@ -40,7 +47,7 @@ class ChatTile extends StatelessWidget {
                 isPinned ? Icons.push_pin_outlined : Icons.push_pin,
                 color: isPinned ? Colors.grey : Colors.amber,
               ),
-              title: Text(isPinned ? 'إلغاء التثبيت' : 'تثبيت'),
+              title: Text(isPinned ? 'unpin_message'.tr : 'pin_message'.tr),
               onTap: () {
                 Navigator.pop(context);
                 if (isPinned) {
@@ -50,10 +57,26 @@ class ChatTile extends StatelessWidget {
                 }
               },
             ),
+            // Archive option
+            ListTile(
+              leading: Icon(
+                isArchived ? Icons.unarchive : Icons.archive,
+                color: Colors.blue,
+              ),
+              title: Text(isArchived ? 'unarchive'.tr : 'archive'.tr),
+              onTap: () {
+                Navigator.pop(context);
+                if (isArchived) {
+                  onUnarchive?.call();
+                } else {
+                  onArchive?.call();
+                }
+              },
+            ),
             // Delete option
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('حذف المحادثة', style: TextStyle(color: Colors.red)),
+              title: Text('delete_chat'.tr, style: const TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
                 _showDeleteConfirmation(context);
@@ -69,12 +92,12 @@ class ChatTile extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('حذف المحادثة'),
-        content: const Text('هل أنت متأكد من حذف هذه المحادثة؟ سيتم حذف جميع الرسائل.'),
+        title: Text('delete_chat'.tr),
+        content: Text('delete_chat_confirm'.tr),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
+            child: Text('cancel'.tr),
           ),
           TextButton(
             onPressed: () {
@@ -82,7 +105,7 @@ class ChatTile extends StatelessWidget {
               onDelete?.call();
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('حذف'),
+            child: Text('delete'.tr),
           ),
         ],
       ),
@@ -124,11 +147,36 @@ class ChatTile extends StatelessWidget {
                       width: 60,
                       height: 60,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => const Icon(
-                        Icons.group,
-                        size: 40,
-                        color: Colors.grey,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        width: 60,
+                        height: 60,
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        child: Center(
+                          child: Text(
+                            name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 24,
+                            ),
+                          ),
+                        ),
                       ),
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          width: 60,
+                          height: 60,
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                          child: Center(
+                            child: Icon(
+                              Icons.person,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 30,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),

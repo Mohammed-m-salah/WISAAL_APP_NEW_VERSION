@@ -74,8 +74,9 @@ class ContactController extends GetxController {
 
       final List<ChatRoomModel> fetchedRooms = [];
 
-      // تحميل بيانات الغرف المثبتة من التخزين المحلي
+      // تحميل بيانات الغرف المثبتة والمؤرشفة من التخزين المحلي
       final pinnedData = await _loadPinnedRoomsFromLocal();
+      final archivedIds = await _loadArchivedRoomsFromLocal();
 
       for (final room in roomData) {
         final chatRoom = ChatRoomModel.fromJson(room);
@@ -87,6 +88,11 @@ class ContactController extends GetxController {
         if (chatRoom.id != null && pinnedData.containsKey(chatRoom.id)) {
           chatRoom.isPinned = true;
           chatRoom.pinOrder = pinnedData[chatRoom.id]!;
+        }
+
+        // تطبيق بيانات الأرشفة من التخزين المحلي
+        if (chatRoom.id != null && archivedIds.contains(chatRoom.id)) {
+          chatRoom.isArchived = true;
         }
 
         final otherUserId = chatRoom.senderId == userId
@@ -108,8 +114,12 @@ class ContactController extends GetxController {
         fetchedRooms.add(chatRoom);
       }
 
-      // ترتيب الغرف: المثبتة أولاً (حسب pinOrder)، ثم حسب آخر رسالة
-      fetchedRooms.sort((a, b) {
+      // فصل الغرف المؤرشفة عن العادية
+      final regularRooms = fetchedRooms.where((r) => !r.isArchived).toList();
+      final archivedRooms = fetchedRooms.where((r) => r.isArchived).toList();
+
+      // ترتيب الغرف العادية: المثبتة أولاً (حسب pinOrder)، ثم حسب آخر رسالة
+      regularRooms.sort((a, b) {
         // المثبتة أولاً
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
@@ -125,7 +135,15 @@ class ContactController extends GetxController {
         return bTime.compareTo(aTime);
       });
 
-      chatRoomList.value = fetchedRooms;
+      // ترتيب الغرف المؤرشفة حسب آخر رسالة
+      archivedRooms.sort((a, b) {
+        final aTime = a.lastMessageTimeStamp ?? DateTime(1970);
+        final bTime = b.lastMessageTimeStamp ?? DateTime(1970);
+        return bTime.compareTo(aTime);
+      });
+
+      chatRoomList.value = regularRooms;
+      archivedChatRoomList.value = archivedRooms;
 
       print("✅ عدد غرف الدردشة: ${chatRoomList.length}");
     } catch (error) {
@@ -143,6 +161,59 @@ class ContactController extends GetxController {
       if (kDebugMode) {
         print(" Error while saving contact: $error");
       }
+    }
+  }
+
+  /// البحث عن مستخدم بالإيميل وإضافته للدردشة
+  Future<void> searchUserByEmail(String email) async {
+    try {
+      isLoading.value = true;
+
+      final response = await db
+          .from('save_users')
+          .select()
+          .eq('email', email)
+          .maybeSingle();
+
+      if (response != null) {
+        final user = UserModel.fromJson(response);
+
+        // التحقق من أن المستخدم ليس نفسه
+        if (user.id == auth.currentUser?.id) {
+          Get.snackbar(
+            'error'.tr,
+            'cannot_add_yourself'.tr,
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          return;
+        }
+
+        Get.snackbar(
+          'success'.tr,
+          'user_found'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+
+        // تحديث قائمة المستخدمين
+        if (!userList.any((u) => u.id == user.id)) {
+          userList.add(user);
+        }
+      } else {
+        Get.snackbar(
+          'error'.tr,
+          'user_not_found'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
+    } catch (error) {
+      print("❌ Error searching user: $error");
+      Get.snackbar(
+        'error'.tr,
+        'search_error'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -283,6 +354,68 @@ class ContactController extends GetxController {
 
   /// الحصول على عدد الغرف المثبتة
   int get pinnedRoomsCount => chatRoomList.where((r) => r.isPinned).length;
+
+  /// قائمة الغرف المؤرشفة
+  RxList<ChatRoomModel> archivedChatRoomList = <ChatRoomModel>[].obs;
+
+  /// تحميل بيانات الغرف المؤرشفة من التخزين المحلي
+  Future<Set<String>> _loadArchivedRoomsFromLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String>? archivedIds = prefs.getStringList('archived_chat_rooms');
+    return archivedIds?.toSet() ?? {};
+  }
+
+  /// حفظ بيانات الغرف المؤرشفة في التخزين المحلي
+  Future<void> _saveArchivedRoomsToLocal(Set<String> archivedRooms) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('archived_chat_rooms', archivedRooms.toList());
+  }
+
+  /// أرشفة غرفة دردشة
+  Future<void> archiveChatRoom(String roomId) async {
+    try {
+      final archivedIds = await _loadArchivedRoomsFromLocal();
+      archivedIds.add(roomId);
+      await _saveArchivedRoomsToLocal(archivedIds);
+
+      // نقل الغرفة من القائمة العادية إلى المؤرشفة
+      final roomIndex = chatRoomList.indexWhere((r) => r.id == roomId);
+      if (roomIndex != -1) {
+        final room = chatRoomList[roomIndex];
+        room.isArchived = true;
+        archivedChatRoomList.add(room);
+        chatRoomList.removeAt(roomIndex);
+      }
+      print("📁 تم أرشفة المحادثة بنجاح");
+    } catch (error) {
+      print("❌ خطأ في أرشفة المحادثة: $error");
+    }
+  }
+
+  /// إلغاء أرشفة غرفة دردشة
+  Future<void> unarchiveChatRoom(String roomId) async {
+    try {
+      final archivedIds = await _loadArchivedRoomsFromLocal();
+      archivedIds.remove(roomId);
+      await _saveArchivedRoomsToLocal(archivedIds);
+
+      // نقل الغرفة من المؤرشفة إلى القائمة العادية
+      final roomIndex = archivedChatRoomList.indexWhere((r) => r.id == roomId);
+      if (roomIndex != -1) {
+        final room = archivedChatRoomList[roomIndex];
+        room.isArchived = false;
+        chatRoomList.add(room);
+        archivedChatRoomList.removeAt(roomIndex);
+        _sortChatRooms();
+      }
+      print("📁 تم إلغاء أرشفة المحادثة بنجاح");
+    } catch (error) {
+      print("❌ خطأ في إلغاء أرشفة المحادثة: $error");
+    }
+  }
+
+  /// الحصول على عدد المحادثات المؤرشفة
+  int get archivedRoomsCount => archivedChatRoomList.length;
 
   // Stream<List<UserModel>> getContacts() {
   //   return db

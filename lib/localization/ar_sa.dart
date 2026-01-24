@@ -108,14 +108,26 @@ const Map<String, String> arSA = {
   // Contacts
   'contacts': 'جهات الاتصال',
   'add_contact': 'إضافة جهة اتصال',
+  'new_contact': 'جهة اتصال جديدة',
+  'add_new_contact': 'إضافة صديق جديد',
+  'search_contacts': 'بحث في جهات الاتصال...',
+  'contacts_on_app': 'جهات الاتصال على وصال',
   'no_contacts': 'لا توجد جهات اتصال بعد',
+  'invite_friends': 'قم بدعوة أصدقائك للتطبيق',
   'saved_contacts': 'جهات الاتصال المحفوظة',
   'contact_saved': 'تم حفظ جهة الاتصال',
   'contact_deleted': 'تم حذف جهة الاتصال',
+  'hey_there': 'مرحباً!',
+  'you': 'أنت',
+  'user': 'مستخدم',
+  'add': 'إضافة',
+  'login_required': 'يجب تسجيل الدخول أولاً',
 
   // Groups
   'groups': 'المجموعات',
   'create_group': 'إنشاء مجموعة',
+  'new_group': 'مجموعة جديدة',
+  'create_new_group': 'إنشاء مجموعة مع أصدقائك',
   'group_name': 'اسم المجموعة',
   'add_members': 'إضافة أعضاء',
   'members': 'الأعضاء',
@@ -162,7 +174,9 @@ const Map<String, String> arSA = {
   // Home
   'home': 'الرئيسية',
   'all_chats': 'جميع المحادثات',
+  'all_groups': 'جميع المجموعات',
   'recent': 'الأخيرة',
+  'no_results': 'لا توجد نتائج',
 
   // Status
   'status': 'الحالة',
@@ -185,4 +199,37 @@ const Map<String, String> arSA = {
   'block_user': 'حظر المستخدم',
   'block_user_confirm': 'هل أنت متأكد من حظر هذا المستخدم؟',
   'unblock_user': 'إلغاء الحظر',
+
+  // Search & Add Contact
+  'cannot_add_yourself': 'لا يمكنك إضافة نفسك',
+  'user_found': 'تم العثور على المستخدم بنجاح',
+  'user_not_found': 'المستخدم غير موجود',
+  'search_error': 'خطأ أثناء البحث',
+
+  // Pinned Chats
+  'pinned_chats': 'المحادثات المثبتة',
+  'long_press_to_drag': 'اضغط مطولاً للسحب',
+
+  // Archived Chats
+  'archive': 'أرشفة',
+  'unarchive': 'إلغاء الأرشفة',
+  'archived_chats': 'المحادثات المؤرشفة',
+  'no_archived_chats': 'لا توجد محادثات مؤرشفة',
+  'archived_chats_hint': 'اسحب لليسار على المحادثة لأرشفتها',
+  'chat_archived': 'تم أرشفة المحادثة',
+  'chat_unarchived': 'تم إلغاء أرشفة المحادثة',
+
+  // User Profile & Shared Media
+  'media': 'الوسائط',
+  'docs': 'المستندات',
+  'links': 'الروابط',
+  'message': 'رسالة',
+  'call': 'اتصال',
+  'report': 'إبلاغ',
+  'no_shared_media': 'لا توجد وسائط مشتركة',
+  'no_shared_audio': 'لا توجد رسائل صوتية مشتركة',
+  'no_shared_docs': 'لا توجد مستندات مشتركة',
+  'no_shared_links': 'لا توجد روابط مشتركة',
+  'shared_media': 'الوسائط المشتركة',
+  'view_profile': 'عرض الملف الشخصي',
 };

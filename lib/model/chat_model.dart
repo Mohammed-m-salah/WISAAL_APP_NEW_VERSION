@@ -130,6 +130,24 @@ class ChatModel extends HiveObject {
 
   factory ChatModel.fromJson(Map<String, dynamic> json) {
     final imageUrls = _parseImageUrls(json['imageUrl']);
+
+    // تحويل readStatus من boolean إلى نص
+    String readStatusText = 'Sent';
+    final rawReadStatus = json['readStatus'];
+    if (rawReadStatus is bool) {
+      readStatusText = rawReadStatus ? 'Read' : 'Sent';
+    } else if (rawReadStatus is String) {
+      readStatusText = rawReadStatus;
+    }
+
+    // تحديد syncStatus بناءً على readStatus
+    MessageSyncStatus syncStatus = MessageSyncStatus.sent;
+    if (readStatusText == 'Read') {
+      syncStatus = MessageSyncStatus.read;
+    } else if (readStatusText == 'Delivered') {
+      syncStatus = MessageSyncStatus.delivered;
+    }
+
     return ChatModel(
       id: json['id'],
       message: json['message'],
@@ -137,7 +155,7 @@ class ChatModel extends HiveObject {
       senderId: json['senderId'],
       reciverId: json['reciverId'],
       timeStamp: json['timeStamp'],
-      readStatus: json['readStatus'],
+      readStatus: readStatusText,
       imageUrl: json['imageUrl'],
       imageUrls: imageUrls,
       videoUrl: json['videoUrl'],
@@ -149,7 +167,7 @@ class ChatModel extends HiveObject {
       isEdited: json['isEdited'] ?? false,
       isForwarded: json['isForwarded'] ?? false,
       forwardedFrom: json['forwardedFrom'],
-      syncStatus: MessageSyncStatus.sent,
+      syncStatus: syncStatus,
       roomId: json['roomId'],
     );
   }

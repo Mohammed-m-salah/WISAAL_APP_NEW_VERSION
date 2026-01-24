@@ -10,7 +10,7 @@ import 'package:wissal_app/model/chat_model.dart';
 import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/pages/call_page/Audio_call_page.dart';
 import 'package:wissal_app/pages/chat_page/widget/chat_pubbel.dart';
-import 'package:wissal_app/pages/user_profile/profile_page.dart';
+import 'package:wissal_app/pages/user_profile/user_profile_page.dart';
 import '../../controller/call_controller/call_controller.dart';
 import '../../controller/status_controller/status_controller.dart';
 import '../../controller/contact_controller/contact_controller.dart';
@@ -39,7 +39,6 @@ class _ChatPageState extends State<ChatPage>
   final ScrollController scrollController = ScrollController();
   late AnimationController _typingAnimationController;
 
-  // متغيرات البحث
   bool isSearching = false;
   String searchQuery = '';
   int currentSearchIndex = 0;
@@ -79,8 +78,10 @@ class _ChatPageState extends State<ChatPage>
       if (roomId.isNotEmpty) {
         chatcontroller.currentChatRoomId.value = roomId;
         chatcontroller.listenToTypingStatus(widget.userModel.id!);
-        // تحميل الرسائل المثبتة
         chatcontroller.loadPinnedMessages(roomId);
+
+        // تحديث حالة الرسائل إلى "مقروءة" عند فتح المحادثة
+        chatcontroller.markMessagesAsRead(widget.userModel.id!);
       } else {
         print("⚠️ لم يتمكن من إنشاء Room ID");
         Get.back();
@@ -154,10 +155,8 @@ class _ChatPageState extends State<ChatPage>
     if (searchMatchIndices.isEmpty || !scrollController.hasClients) return;
 
     final targetIndex = searchMatchIndices[currentSearchIndex];
-    // حساب موقع الرسالة (كل رسالة حوالي 100 بكسل)
     final estimatedOffset = targetIndex * 100.0;
 
-    // التأكد من عدم تجاوز الحدود
     final maxScroll = scrollController.position.maxScrollExtent;
     final offset = estimatedOffset.clamp(0.0, maxScroll);
 
@@ -168,26 +167,20 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  // متغير لتتبع الرسالة المثبتة الحالية
   int _currentPinnedIndex = 0;
   PageController? _pinnedPageController;
 
-  // قائمة الرسائل للسكرول
   List<ChatModel> _allMessagesList = [];
 
-  // ID الرسالة المثبتة المحددة للـ highlight
   String? _pinnedHighlightId;
 
-  /// السكرول إلى رسالة معينة بناءً على ID مع highlight
   void _scrollToMessage(String messageId) {
     final index = _allMessagesList.indexWhere((m) => m.id == messageId);
     if (index != -1 && scrollController.hasClients) {
-      // تفعيل الـ highlight
       setState(() {
         _pinnedHighlightId = messageId;
       });
 
-      // حساب الموقع التقريبي (كل رسالة ~80 بكسل)
       final position = index * 80.0;
       scrollController.animateTo(
         position,
@@ -195,7 +188,6 @@ class _ChatPageState extends State<ChatPage>
         curve: Curves.easeInOut,
       );
 
-      // إزالة الـ highlight بعد 2 ثانية
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
           setState(() {
@@ -204,7 +196,6 @@ class _ChatPageState extends State<ChatPage>
         }
       });
 
-      // الانتقال للرسالة المثبتة التالية
       final pinnedList = chatcontroller.pinnedMessages;
       if (pinnedList.length > 1) {
         Future.delayed(const Duration(milliseconds: 600), () {
@@ -221,13 +212,11 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
-  /// ويدجت الرسائل المثبتة (نقاط عمودية + سكرول للرسالة)
   Widget _buildPinnedMessageBanner() {
     return Obx(() {
       final pinnedList = chatcontroller.pinnedMessages;
       if (pinnedList.isEmpty) return const SizedBox.shrink();
 
-      // إنشاء PageController إذا لم يكن موجوداً
       _pinnedPageController ??= PageController();
 
       return Container(
@@ -244,7 +233,6 @@ class _ChatPageState extends State<ChatPage>
         ),
         child: Row(
           children: [
-            // النقاط العمودية على اليسار
             if (pinnedList.length > 1)
               Container(
                 padding:
@@ -277,12 +265,10 @@ class _ChatPageState extends State<ChatPage>
                   }),
                 ),
               ),
-            // محتوى الرسالة المثبتة
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // العنوان مع عدد الرسائل
                   Padding(
                     padding: const EdgeInsets.only(
                         left: 8, right: 12, top: 6, bottom: 4),
@@ -349,7 +335,6 @@ class _ChatPageState extends State<ChatPage>
                       ],
                     ),
                   ),
-                  // الرسالة المثبتة
                   SizedBox(
                     height: 40,
                     child: PageView.builder(
@@ -373,7 +358,6 @@ class _ChatPageState extends State<ChatPage>
 
                         return GestureDetector(
                           onTap: () {
-                            // السكرول للرسالة في المحادثة
                             _scrollToMessage(pinned.id!);
                           },
                           child: Container(
@@ -490,7 +474,8 @@ class _ChatPageState extends State<ChatPage>
         elevation: 2,
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onPrimary),
+          icon: Icon(Icons.arrow_back,
+              color: Theme.of(context).colorScheme.onPrimary),
           onPressed: () {
             if (isSearching) {
               setState(() {
@@ -510,10 +495,15 @@ class _ChatPageState extends State<ChatPage>
                     child: TextField(
                       controller: searchController,
                       autofocus: true,
-                      style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.onPrimary),
                       decoration: InputDecoration(
                         hintText: 'search'.tr,
-                        hintStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.6)),
+                        hintStyle: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimary
+                                .withOpacity(0.6)),
                         border: InputBorder.none,
                       ),
                       onChanged: (value) {
@@ -529,19 +519,24 @@ class _ChatPageState extends State<ChatPage>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onPrimary
+                            .withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         '${currentSearchIndex + 1}/${searchMatchIndices.length}',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onPrimary, fontSize: 12),
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            fontSize: 12),
                       ),
                     ),
                 ],
               )
             : InkWell(
                 onTap: () {
-                  Get.to(() => UserProfilePage(userModel: userModel));
+                  Get.to(() => UserProfilePage(user: userModel));
                 },
                 child: Row(
                   children: [
@@ -566,7 +561,8 @@ class _ChatPageState extends State<ChatPage>
                                 .textTheme
                                 .titleMedium
                                 ?.copyWith(
-                                  color: Theme.of(context).colorScheme.onPrimary,
+                                  color:
+                                      Theme.of(context).colorScheme.onPrimary,
                                   fontWeight: FontWeight.bold,
                                 ),
                           ),
@@ -759,9 +755,8 @@ class _ChatPageState extends State<ChatPage>
 
                     final messages = snapshot.data!.reversed.toList();
                     allMessages = messages;
-                    _allMessagesList = messages; // للسكرول للرسالة المثبتة
+                    _allMessagesList = messages;
 
-                    // تحديث فهارس البحث
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (isSearching && searchQuery.isNotEmpty) {
                         _updateSearchMatches(messages);
@@ -841,13 +836,11 @@ class _ChatPageState extends State<ChatPage>
                               final isMyMessage =
                                   message.senderId == currentUserId;
 
-                              // تحديد إذا كانت هذه الرسالة متطابقة مع البحث
                               final isCurrentSearchMatch = isSearching &&
                                   searchMatchIndices.isNotEmpty &&
                                   searchMatchIndices[currentSearchIndex] ==
                                       index;
 
-                              // تحديد إذا كانت الرسالة تحتوي على نص البحث
                               final isSearchMatch = isSearching &&
                                   searchQuery.isNotEmpty &&
                                   (message.message ?? '')
@@ -877,8 +870,10 @@ class _ChatPageState extends State<ChatPage>
                                 isForwarded: message.isForwarded ?? false,
                                 forwardedFrom: message.forwardedFrom,
                                 syncStatus: message.syncStatus,
-                                onRetry: message.syncStatus == MessageSyncStatus.failed
-                                    ? () => chatcontroller.retryFailedMessage(message.id!)
+                                onRetry: message.syncStatus ==
+                                        MessageSyncStatus.failed
+                                    ? () => chatcontroller
+                                        .retryFailedMessage(message.id!)
                                     : null,
                                 isPinned: chatcontroller
                                     .isMessagePinned(message.id ?? ''),
@@ -1019,9 +1014,7 @@ class _ChatPageState extends State<ChatPage>
                                                         BorderRadius.circular(
                                                             10),
                                                   ),
-                                                  child: const Icon(Icons.edit,
-                                                      color: Colors.blue,
-                                                      size: 24),
+                                                  child: const Text('Edited'),
                                                 ),
                                                 const SizedBox(width: 12),
                                                 const Text('Edit Message'),
@@ -1481,10 +1474,16 @@ class _ChatPageState extends State<ChatPage>
                               controller: messageController,
                               maxLines: 5,
                               minLines: 1,
-                              style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
+                              style: TextStyle(
+                                  color:
+                                      Theme.of(context).colorScheme.onPrimary),
                               decoration: InputDecoration(
                                 hintText: 'type_message'.tr,
-                                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.6)),
+                                hintStyle: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimary
+                                        .withOpacity(0.6)),
                                 border: InputBorder.none,
                                 contentPadding: const EdgeInsets.symmetric(
                                   vertical: 12,

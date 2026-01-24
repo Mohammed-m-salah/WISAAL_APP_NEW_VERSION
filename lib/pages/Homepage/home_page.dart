@@ -5,6 +5,7 @@ import 'package:wissal_app/controller/chat_controller/chat_controller.dart';
 import 'package:wissal_app/controller/contact_controller/contact_controller.dart';
 import 'package:wissal_app/controller/group_controller/group_controller.dart';
 import 'package:wissal_app/controller/status_controller/status_controller.dart';
+import 'package:wissal_app/controller/theme_controller/theme_controller.dart';
 import 'package:wissal_app/model/ChatRoomModel.dart';
 import 'package:wissal_app/model/Group_model.dart';
 import 'package:wissal_app/pages/Homepage/widgets/call_list_page.dart';
@@ -27,6 +28,7 @@ class _HomePageState extends State<HomePage>
   final StatusController statusController = Get.put(StatusController());
   final ContactController contactController = Get.put(ContactController());
   final GroupController groupController = Get.put(GroupController());
+  final ThemeController themeController = Get.find<ThemeController>();
   late TabController _tabController;
 
   // Search
@@ -91,60 +93,72 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          onPressed: () {
-            Get.toNamed('/contactpage');
-          },
-          child: const Icon(Icons.add)),
       appBar: AppBar(
-        elevation: 2,
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        leading: IconButton(
-          onPressed: () {},
-          icon: SvgPicture.asset(
+        elevation: 0,
+        leading: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: SvgPicture.asset(
             'assets/icons/Vector.svg',
-            width: 30,
-            height: 30,
-            color: Theme.of(context).colorScheme.primary,
+            width: 24,
+            height: 24,
+            colorFilter: ColorFilter.mode(
+              Theme.of(context).appBarTheme.foregroundColor ?? Colors.white,
+              BlendMode.srcIn,
+            ),
           ),
         ),
-        title: Text(
-          'Wisaal App',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-        ),
+        title: Text('app_name'.tr),
         actions: [
+          // Theme Toggle Button
+          Obx(() => IconButton(
+                onPressed: () => themeController.toggleTheme(),
+                icon: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, animation) {
+                    return RotationTransition(
+                      turns: animation,
+                      child: ScaleTransition(scale: animation, child: child),
+                    );
+                  },
+                  child: Icon(
+                    themeController.isDarkMode
+                        ? Icons.light_mode_rounded
+                        : Icons.dark_mode_rounded,
+                    key: ValueKey(themeController.isDarkMode),
+                  ),
+                ),
+                tooltip: themeController.isDarkMode
+                    ? 'light_mode'.tr
+                    : 'dark_mode'.tr,
+              )),
           IconButton(
             onPressed: _openSearch,
-            icon: const Icon(Icons.search, color: Colors.white),
-          ),
-          const SizedBox(width: 10),
-          IconButton(
-            onPressed: () {
-              Get.toNamed('/profilepage');
-            },
-            icon: const Icon(Icons.person, color: Colors.white),
+            icon: const Icon(Icons.search_rounded),
           ),
         ],
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.white,
           indicatorWeight: 3,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
-          tabs: const [
-            Tab(text: 'Chats'),
-            Tab(text: 'Groups'),
-            Tab(text: 'Calls'),
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          labelStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.normal,
+            fontSize: 14,
+          ),
+          tabs: [
+            Tab(text: 'chats'.tr),
+            Tab(text: 'groups'.tr),
+            Tab(text: 'calls'.tr),
           ],
         ),
       ),
       body: Obx(() => Stack(
             children: [
-              // Main Content with connectivity banner
               Column(
                 children: [
                   const ConnectivityBanner(),
@@ -161,8 +175,6 @@ class _HomePageState extends State<HomePage>
                   ),
                 ],
               ),
-
-              // Search Overlay - only added when searching
               if (isSearching.value)
                 GestureDetector(
                   onTap: _closeSearch,
@@ -170,7 +182,6 @@ class _HomePageState extends State<HomePage>
                     color: Colors.black54,
                     child: Column(
                       children: [
-                        // Search Box
                         Material(
                           elevation: 8,
                           child: Container(
@@ -199,7 +210,7 @@ class _HomePageState extends State<HomePage>
                                         style: const TextStyle(
                                             color: Colors.white),
                                         decoration: InputDecoration(
-                                          hintText: 'Search...',
+                                          hintText: 'search_hint'.tr,
                                           hintStyle: TextStyle(
                                               color: Colors.white
                                                   .withOpacity(0.6)),
@@ -227,8 +238,6 @@ class _HomePageState extends State<HomePage>
                             ),
                           ),
                         ),
-
-                        // Search Results
                         Expanded(
                           child: GestureDetector(
                             onTap: () {},
@@ -254,8 +263,8 @@ class _HomePageState extends State<HomePage>
                                         const SizedBox(height: 16),
                                         Text(
                                           searchQuery.value.isEmpty
-                                              ? 'No chats yet'
-                                              : 'No results for "${searchController.text}"',
+                                              ? 'no_messages'.tr
+                                              : '${'search'.tr}: "${searchController.text}"',
                                           style: TextStyle(
                                               color: Colors.grey[600],
                                               fontSize: 16),
@@ -272,7 +281,6 @@ class _HomePageState extends State<HomePage>
                                 child: ListView(
                                   padding: const EdgeInsets.only(top: 8),
                                   children: [
-                                    // Chats Section
                                     if (chats.isNotEmpty) ...[
                                       Padding(
                                         padding: const EdgeInsets.symmetric(
@@ -287,8 +295,8 @@ class _HomePageState extends State<HomePage>
                                             const SizedBox(width: 8),
                                             Text(
                                               searchQuery.value.isEmpty
-                                                  ? 'All Chats (${chats.length})'
-                                                  : 'Chats (${chats.length})',
+                                                  ? '${'all_chats'.tr} (${chats.length})'
+                                                  : '${'chats'.tr} (${chats.length})',
                                               style: TextStyle(
                                                 color: Theme.of(context)
                                                     .colorScheme
@@ -303,8 +311,6 @@ class _HomePageState extends State<HomePage>
                                       ...chats
                                           .map((room) => _buildChatTile(room)),
                                     ],
-
-                                    // Groups Section
                                     if (groups.isNotEmpty) ...[
                                       Padding(
                                         padding: const EdgeInsets.symmetric(
@@ -319,8 +325,8 @@ class _HomePageState extends State<HomePage>
                                             const SizedBox(width: 8),
                                             Text(
                                               searchQuery.value.isEmpty
-                                                  ? 'All Groups (${groups.length})'
-                                                  : 'Groups (${groups.length})',
+                                                  ? '${'groups'.tr} (${groups.length})'
+                                                  : '${'groups'.tr} (${groups.length})',
                                               style: TextStyle(
                                                 color: Theme.of(context)
                                                     .colorScheme
@@ -352,14 +358,49 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildChatTile(ChatRoomModel room) {
     if (room.receiver == null) return const SizedBox();
+    final theme = Theme.of(context);
+    final hasImage = room.receiver!.profileimage != null &&
+        room.receiver!.profileimage!.isNotEmpty;
 
     return ListTile(
       leading: CircleAvatar(
         radius: 24,
-        backgroundImage: NetworkImage(
-          room.receiver!.profileimage ??
-              'https://i.ibb.co/V04vrTtV/blank-profile-picture-973460-1280.png',
-        ),
+        backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+        child: hasImage
+            ? ClipOval(
+                child: Image.network(
+                  room.receiver!.profileimage!,
+                  width: 48,
+                  height: 48,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Text(
+                      (room.receiver!.name ?? 'U')[0].toUpperCase(),
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    );
+                  },
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Icon(
+                      Icons.person,
+                      color: theme.colorScheme.primary,
+                      size: 22,
+                    );
+                  },
+                ),
+              )
+            : Text(
+                (room.receiver!.name ?? 'U')[0].toUpperCase(),
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
       ),
       title: _highlightText(room.receiver!.name ?? 'User', searchQuery.value),
       subtitle: Text(
@@ -377,19 +418,34 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildGroupTile(GroupModel group) {
+    final theme = Theme.of(context);
+    final hasImage = group.profileUrl.isNotEmpty;
+
     return ListTile(
       leading: CircleAvatar(
         radius: 24,
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        backgroundImage:
-            group.profileUrl.isNotEmpty ? NetworkImage(group.profileUrl) : null,
-        child: group.profileUrl.isEmpty
-            ? const Icon(Icons.group, color: Colors.white, size: 22)
-            : null,
+        backgroundColor: theme.colorScheme.primary,
+        child: hasImage
+            ? ClipOval(
+                child: Image.network(
+                  group.profileUrl,
+                  width: 48,
+                  height: 48,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(Icons.group, color: Colors.white, size: 22);
+                  },
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Icon(Icons.group, color: Colors.white, size: 22);
+                  },
+                ),
+              )
+            : const Icon(Icons.group, color: Colors.white, size: 22),
       ),
       title: _highlightText(group.name ?? 'Group', searchQuery.value),
       subtitle: Text(
-        '${group.members.length} members',
+        '${group.members.length} ${'members'.tr}',
         style: TextStyle(color: Colors.grey[600], fontSize: 13),
       ),
       trailing: const Icon(Icons.chevron_right, color: Colors.grey),

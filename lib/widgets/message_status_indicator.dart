@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:wissal_app/model/message_sync_status.dart';
 
+// الألوان الثابتة لحالات الرسالة
+const Color _silverColor = Color(0xFFB0B0B0); // فضي للـ sent و delivered
+const Color _readColor = Color(0xFF1565C0); // أزرق غامق للقراءة
+
 class MessageStatusIndicator extends StatelessWidget {
   final MessageSyncStatus? status;
+  final String? readStatus; // لدعم النص القديم "Read" / "Delivered"
   final Color? color;
   final double size;
   final VoidCallback? onRetry;
@@ -10,6 +15,7 @@ class MessageStatusIndicator extends StatelessWidget {
   const MessageStatusIndicator({
     super.key,
     this.status,
+    this.readStatus,
     this.color,
     this.size = 16,
     this.onRetry,
@@ -17,48 +23,66 @@ class MessageStatusIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = color ?? Colors.white.withOpacity(0.7);
+    // تحديد الحالة النهائية
+    MessageSyncStatus? effectiveStatus = status;
 
-    switch (status) {
+    // إذا لم يكن هناك syncStatus، نستخدم readStatus
+    if (effectiveStatus == null || effectiveStatus == MessageSyncStatus.sent) {
+      if (readStatus == 'Read') {
+        effectiveStatus = MessageSyncStatus.read;
+      } else if (readStatus == 'Delivered') {
+        effectiveStatus = MessageSyncStatus.delivered;
+      }
+    }
+
+    final defaultColor = color ?? _silverColor;
+
+    switch (effectiveStatus) {
       case MessageSyncStatus.pending:
+        // ساعة رمادية - قيد الإرسال (بدون نت)
         return Icon(
-          Icons.schedule,
+          Icons.schedule_rounded,
           size: size,
-          color: effectiveColor,
+          color: defaultColor,
         );
 
       case MessageSyncStatus.uploading:
+        // دائرة تحميل - جاري رفع الوسائط
         return SizedBox(
           width: size,
           height: size,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(effectiveColor),
+            valueColor: AlwaysStoppedAnimation<Color>(defaultColor),
           ),
         );
 
       case MessageSyncStatus.sent:
+        // ✓ صح واحد فضي - تم الإرسال للسيرفر
         return Icon(
-          Icons.done,
+          Icons.done_rounded,
           size: size,
-          color: effectiveColor,
+          color: _silverColor,
         );
 
       case MessageSyncStatus.delivered:
+        // ✓✓ صحين فضي - تم التوصيل للمستلم
         return Icon(
-          Icons.done_all,
+          Icons.done_all_rounded,
           size: size,
-          color: effectiveColor,
+          color: _silverColor,
         );
 
       case MessageSyncStatus.read:
+        // ✓✓ صحين أزرق غامق - تمت القراءة
         return Icon(
-          Icons.done_all,
+          Icons.done_all_rounded,
           size: size,
-          color: Colors.blue.shade300,
+          color: _readColor,
         );
 
       case MessageSyncStatus.failed:
+        // أيقونة خطأ حمراء - فشل الإرسال
         return GestureDetector(
           onTap: onRetry,
           child: Container(
@@ -68,7 +92,7 @@ class MessageStatusIndicator extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Icon(
-              Icons.error_outline,
+              Icons.error_outline_rounded,
               size: size,
               color: Colors.red,
             ),
@@ -77,9 +101,9 @@ class MessageStatusIndicator extends StatelessWidget {
 
       default:
         return Icon(
-          Icons.done,
+          Icons.done_rounded,
           size: size,
-          color: effectiveColor,
+          color: _silverColor,
         );
     }
   }

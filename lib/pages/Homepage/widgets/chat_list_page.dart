@@ -5,7 +5,9 @@ import 'package:wissal_app/controller/contact_controller/contact_controller.dart
 import 'package:wissal_app/model/ChatRoomModel.dart';
 import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/pages/Homepage/widgets/chat_tile.dart';
+import 'package:wissal_app/pages/archived_chats/archived_chats_page.dart';
 import 'package:wissal_app/pages/chat_page/chat_page.dart';
+import 'package:wissal_app/widgets/skeleton_loading.dart';
 
 class ChatListPage extends StatefulWidget {
   const ChatListPage({super.key});
@@ -25,7 +27,7 @@ class _ChatListPageState extends State<ChatListPage> {
   void _openChat(UserModel user) {
     final currentUser = Supabase.instance.client.auth.currentUser;
     if (currentUser == null) {
-      Get.snackbar('خطأ', 'يجب تسجيل الدخول أولاً');
+      Get.snackbar('error'.tr, 'login_required'.tr);
       return;
     }
     Get.to(() => ChatPage(userModel: user));
@@ -43,12 +45,21 @@ class _ChatListPageState extends State<ChatListPage> {
           imgUrl: room.receiver!.profileimage ??
               'https://i.ibb.co/V04vrTtV/blank-profile-picture-973460-1280.png',
           name: room.receiver!.name ?? 'user name',
-          lastChat: room.lastMessage ?? 'لا توجد رسالة',
+          lastChat: room.lastMessage ?? 'no_messages'.tr,
           lastTime: formatTimestamp(room.lastMessageTimeStamp),
           isPinned: room.isPinned,
           onPin: () => contactController.pinChatRoom(room.id!),
           onUnpin: () => contactController.unpinChatRoom(room.id!),
           onDelete: () => contactController.deleteChatRoom(room.id!),
+          onArchive: () {
+            contactController.archiveChatRoom(room.id!);
+            Get.snackbar(
+              'success'.tr,
+              'chat_archived'.tr,
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 2),
+            );
+          },
         ),
       ),
     );
@@ -60,17 +71,17 @@ class _ChatListPageState extends State<ChatListPage> {
       onRefresh: () => contactController.getChatRoomList(),
       child: Obx(() {
         if (contactController.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
+          return const ChatListSkeleton();
         }
 
         if (contactController.chatRoomList.isEmpty) {
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            children: const [
+            children: [
               Center(
                 child: Padding(
-                  padding: EdgeInsets.only(top: 150),
-                  child: Text('لا توجد محادثات حالياً'),
+                  padding: const EdgeInsets.only(top: 150),
+                  child: Text('no_messages'.tr),
                 ),
               ),
             ],
@@ -87,6 +98,65 @@ class _ChatListPageState extends State<ChatListPage> {
 
         return CustomScrollView(
           slivers: [
+            // قسم المحادثات المؤرشفة (زر للانتقال)
+            if (contactController.archivedChatRoomList.isNotEmpty)
+              SliverToBoxAdapter(
+                child: InkWell(
+                  onTap: () => Get.to(() => const ArchivedChatsPage()),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.archive,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'archived_chats'.tr,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${contactController.archivedChatRoomList.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.chevron_right,
+                          color: Theme.of(context).hintColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             // قسم الغرف المثبتة (قابل لإعادة الترتيب)
             if (pinnedRooms.isNotEmpty) ...[
               SliverToBoxAdapter(
@@ -97,7 +167,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       Icon(Icons.push_pin, size: 18, color: Colors.amber.shade600),
                       const SizedBox(width: 8),
                       Text(
-                        'المحادثات المثبتة (${pinnedRooms.length})',
+                        '${'pinned_chats'.tr} (${pinnedRooms.length})',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.amber.shade700,
@@ -105,7 +175,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       ),
                       const Spacer(),
                       Text(
-                        'اضغط مطولاً للسحب',
+                        'long_press_to_drag'.tr,
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.grey.shade500,

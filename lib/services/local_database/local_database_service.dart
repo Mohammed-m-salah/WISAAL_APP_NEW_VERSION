@@ -45,7 +45,6 @@ class LocalDatabaseService extends GetxService {
       Hive.registerAdapter(SyncMetadataModelAdapter());
     }
 
-    // Open boxes
     _messagesBox = await Hive.openBox<ChatModel>(messagesBoxName);
     _chatRoomsBox = await Hive.openBox<ChatRoomModel>(chatRoomsBoxName);
     _usersBox = await Hive.openBox<UserModel>(usersBoxName);

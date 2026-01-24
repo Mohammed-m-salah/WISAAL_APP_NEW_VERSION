@@ -91,6 +91,9 @@ class ChatController extends GetxController {
   final RxMap<String, RxList<ChatModel>> _messagesCache =
       <String, RxList<ChatModel>>{}.obs;
 
+  // لحفظ الـ StreamControllers لإرسال التحديثات
+  final Map<String, StreamController<List<ChatModel>>> _messageStreamControllers = {};
+
   String getRoomId(String targetUserId) {
     final currentUser = auth.currentUser;
 
@@ -113,21 +116,16 @@ class ChatController extends GetxController {
     return currentUser.id == targetUser.id ? targetUser : currentUser;
   }
 
-  /// Send message with offline support
+  /// Send message with offline support - FAST VERSION
   Future<void> sendMessage(
     String targetUserId,
     String message,
     UserModel targetUser, {
     bool isVoice = false,
   }) async {
-    isLoading.value = true;
-    isSending.value = true;
-
     final currentUser = auth.currentUser;
     if (currentUser == null) {
       Get.snackbar('خطأ', 'المستخدم غير مسجل الدخول');
-      isLoading.value = false;
-      isSending.value = false;
       return;
     }
 
@@ -136,24 +134,15 @@ class ChatController extends GetxController {
     final currentUserId = currentUser.id;
     final now = DateTime.now().toIso8601String();
 
-    print('📤 sendMessage - targetUserId: $targetUserId');
-    print('📤 sendMessage - roomId: $roomId');
-    print('📤 sendMessage - currentUserId: $currentUserId');
-    print('📤 sendMessage - message: $message');
-    print('📤 sendMessage - isOnline: ${_connectivity.isOnline.value}');
-
     // Prepare image URLs
     List<String> imagePaths = List.from(selectedImagePaths);
-    String imageUrlValue = '';
-
-    // Prepare audio
     String audioPath = selectedAudioPath.value;
 
-    // Create local message immediately for instant UI feedback
+    // Create local message immediately
     final newChat = ChatModel(
       id: chatId,
       message: message.isNotEmpty ? message : '',
-      imageUrl: imageUrlValue,
+      imageUrl: '',
       imageUrls: [],
       audioUrl: '',
       senderId: currentUserId,
@@ -164,115 +153,54 @@ class ChatController extends GetxController {
       roomId: roomId,
     );
 
-    // Add to local cache immediately for instant UI feedback
+    // ⚡ إضافة فورية للكاش - UI يتحدث فوراً
     if (!_messagesCache.containsKey(roomId)) {
       _messagesCache[roomId] = <ChatModel>[].obs;
     }
     _messagesCache[roomId]!.add(newChat);
 
-    // Save to local database
-    await _localDb.saveMessage(newChat);
+    // ⚡ إخطار الـ Stream بالرسالة الجديدة فوراً
+    _notifyMessageAdded(roomId);
 
-    // Clear selected media
+    // Clear selected media فوراً
     selectedImagePaths.clear();
     selectedAudioPath.value = "";
 
-    // Check if online
-    if (_connectivity.isOnline.value) {
-      // Online: send directly
-      try {
-        RxString audioUrl = ''.obs;
-        List<String> uploadedImageUrls = [];
+    // ⚡ حفظ محلي في الخلفية (بدون انتظار)
+    _localDb.saveMessage(newChat);
 
-        // Upload images
-        if (imagePaths.isNotEmpty) {
-          for (String imagePath in imagePaths) {
-            String imgUrl =
-                await profileController.uploadeFileToSupabase(imagePath);
-            if (imgUrl.isNotEmpty) {
-              uploadedImageUrls.add(imgUrl);
-              print("✅ تم رفع الصورة: $imgUrl");
-            }
-          }
-        }
+    // ⚡ إرسال للسيرفر في الخلفية
+    _sendMessageToServer(
+      chatId: chatId,
+      roomId: roomId,
+      currentUserId: currentUserId,
+      targetUserId: targetUserId,
+      targetUser: targetUser,
+      message: message,
+      imagePaths: imagePaths,
+      audioPath: audioPath,
+      isVoice: isVoice,
+      now: now,
+      newChat: newChat,
+    );
+  }
 
-        // Upload audio
-        if (isVoice && audioPath.isNotEmpty) {
-          audioUrl.value = await profileController.uploadeFileToSupabase(audioPath);
-          print("✅ ملف الصوت: ${audioUrl.value}");
-        }
-
-        // Prepare image URL value
-        if (uploadedImageUrls.isNotEmpty) {
-          if (uploadedImageUrls.length == 1) {
-            imageUrlValue = uploadedImageUrls.first;
-          } else {
-            imageUrlValue = jsonEncode(uploadedImageUrls);
-          }
-        }
-
-        // Insert to Supabase
-        await db.from('chats').insert({
-          'id': chatId,
-          'senderId': currentUserId,
-          'reciverId': targetUserId,
-          'senderName': newChat.senderName,
-          'message': newChat.message,
-          'imageUrl': imageUrlValue,
-          'audioUrl': audioUrl.value,
-          'timeStamp': newChat.timeStamp,
-          'roomId': roomId,
-        });
-
-        // Update last message
-        String lastMessage = message.isNotEmpty
-            ? message
-            : uploadedImageUrls.isNotEmpty
-                ? uploadedImageUrls.length > 1
-                    ? '📷 ${uploadedImageUrls.length} صور'
-                    : '📷 صورة'
-                : audioUrl.value.isNotEmpty
-                    ? '🎤 رسالة صوتية'
-                    : '';
-
-        await db.from('chat_rooms').upsert({
-          'id': roomId,
-          'senderId': currentUserId,
-          'reciverId': targetUserId,
-          'last_message': lastMessage,
-          'last_message_time_stamp': now,
-          'created_at': now,
-          'un_read_message_no': 0,
-        });
-
-        await contactController.saveContact(targetUser);
-        await contactController.getChatRoomList();
-
-        // Update message status to sent
-        newChat.syncStatus = MessageSyncStatus.sent;
-        newChat.imageUrl = imageUrlValue;
-        newChat.imageUrls = uploadedImageUrls;
-        newChat.audioUrl = audioUrl.value;
-        await _localDb.saveMessage(newChat);
-
-        // Update cache
-        final index = _messagesCache[roomId]!.indexWhere((m) => m.id == chatId);
-        if (index != -1) {
-          _messagesCache[roomId]![index] = newChat;
-        }
-
-        print("✅ Message sent successfully");
-      } catch (e) {
-        print("❌ Error sending message: $e");
-        // Mark as failed
-        newChat.syncStatus = MessageSyncStatus.failed;
-        await _localDb.saveMessage(newChat);
-        Get.snackbar('خطأ', 'حدث خطأ أثناء إرسال الرسالة');
-      }
-    } else {
+  /// إرسال الرسالة للسيرفر في الخلفية
+  Future<void> _sendMessageToServer({
+    required String chatId,
+    required String roomId,
+    required String currentUserId,
+    required String targetUserId,
+    required UserModel targetUser,
+    required String message,
+    required List<String> imagePaths,
+    required String audioPath,
+    required bool isVoice,
+    required String now,
+    required ChatModel newChat,
+  }) async {
+    if (!_connectivity.isOnline.value) {
       // Offline: add to queue
-      print("📴 Offline - Adding message to queue");
-
       final pendingMessage = PendingMessageModel(
         id: chatId,
         message: message,
@@ -285,18 +213,95 @@ class ChatController extends GetxController {
         localAudioPath: audioPath.isNotEmpty ? audioPath : null,
         status: MessageSyncStatus.pending,
       );
-
       await _offlineQueue.enqueue(pendingMessage);
-      Get.snackbar(
-        'Offline',
-        'Message will be sent when you\'re back online',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 2),
-      );
+      return;
     }
 
-    isLoading.value = false;
-    isSending.value = false;
+    try {
+      String imageUrlValue = '';
+      String audioUrlValue = '';
+      List<String> uploadedImageUrls = [];
+
+      // Upload images
+      if (imagePaths.isNotEmpty) {
+        for (String imagePath in imagePaths) {
+          String imgUrl = await profileController.uploadeFileToSupabase(imagePath);
+          if (imgUrl.isNotEmpty) {
+            uploadedImageUrls.add(imgUrl);
+          }
+        }
+        imageUrlValue = uploadedImageUrls.length == 1
+            ? uploadedImageUrls.first
+            : jsonEncode(uploadedImageUrls);
+      }
+
+      // Upload audio
+      if (isVoice && audioPath.isNotEmpty) {
+        audioUrlValue = await profileController.uploadeFileToSupabase(audioPath);
+      }
+
+      // Insert to Supabase
+      await db.from('chats').insert({
+        'id': chatId,
+        'senderId': currentUserId,
+        'reciverId': targetUserId,
+        'senderName': newChat.senderName,
+        'message': newChat.message,
+        'imageUrl': imageUrlValue,
+        'audioUrl': audioUrlValue,
+        'timeStamp': now,
+        'roomId': roomId,
+      });
+
+      // Update message status to sent
+      newChat.syncStatus = MessageSyncStatus.sent;
+      newChat.readStatus = 'Sent';
+      newChat.imageUrl = imageUrlValue;
+      newChat.imageUrls = uploadedImageUrls;
+      newChat.audioUrl = audioUrlValue;
+
+      // Update cache
+      final index = _messagesCache[roomId]!.indexWhere((m) => m.id == chatId);
+      if (index != -1) {
+        _messagesCache[roomId]![index] = newChat;
+        // ⚡ إخطار الـ Stream بتحديث الحالة
+        _notifyMessageAdded(roomId);
+      }
+      await _localDb.saveMessage(newChat);
+
+      // Update chat room in background
+      String lastMessage = message.isNotEmpty
+          ? message
+          : uploadedImageUrls.isNotEmpty
+              ? '📷 صورة'
+              : audioUrlValue.isNotEmpty
+                  ? '🎤 رسالة صوتية'
+                  : '';
+
+      db.from('chat_rooms').upsert({
+        'id': roomId,
+        'senderId': currentUserId,
+        'reciverId': targetUserId,
+        'last_message': lastMessage,
+        'last_message_time_stamp': now,
+        'created_at': now,
+        'un_read_message_no': 0,
+      });
+
+      contactController.saveContact(targetUser);
+      contactController.getChatRoomList();
+
+    } catch (e) {
+      print("❌ Error sending message: $e");
+      newChat.syncStatus = MessageSyncStatus.failed;
+      final index = _messagesCache[roomId]!.indexWhere((m) => m.id == chatId);
+      if (index != -1) {
+        _messagesCache[roomId]![index] = newChat;
+        // ⚡ إخطار الـ Stream بفشل الإرسال
+        _notifyMessageAdded(roomId);
+      }
+      await _localDb.saveMessage(newChat);
+    }
   }
 
   start_record() async {
@@ -441,6 +446,7 @@ class ChatController extends GetxController {
 
         // Update status
         newChat.syncStatus = MessageSyncStatus.sent;
+        newChat.readStatus = 'Sent';
         newChat.audioUrl = audioUrl;
         await _localDb.saveMessage(newChat);
 
@@ -546,18 +552,56 @@ class ChatController extends GetxController {
     }
   }
 
+  /// تحديث حالة الرسائل إلى "مقروءة" عند فتح المحادثة
+  Future<void> markMessagesAsRead(String targetUserId) async {
+    try {
+      final currentUserId = auth.currentUser?.id;
+      if (currentUserId == null) return;
+
+      final roomId = getRoomId(targetUserId);
+
+      // تحديث الرسائل في Supabase - فقط الرسائل المرسلة من الطرف الآخر
+      if (_connectivity.isOnline.value) {
+        await db
+            .from('chats')
+            .update({'readStatus': true}) // boolean في قاعدة البيانات
+            .eq('roomId', roomId)
+            .eq('senderId', targetUserId) // رسائل المرسل الآخر فقط
+            .eq('readStatus', false); // التي لم تُقرأ بعد
+
+        print("✅ تم تحديث حالة الرسائل إلى مقروءة");
+      }
+
+      // تحديث الكاش المحلي
+      if (_messagesCache.containsKey(roomId)) {
+        for (var message in _messagesCache[roomId]!) {
+          if (message.senderId == targetUserId) {
+            message.readStatus = 'Read';
+            message.syncStatus = MessageSyncStatus.read;
+            await _localDb.saveMessage(message);
+          }
+        }
+      }
+    } catch (e) {
+      print("❌ خطأ في تحديث حالة القراءة: $e");
+    }
+  }
+
   /// Get messages with local-first loading
   Stream<List<ChatModel>> getMessages(String targetUserId) {
     final roomId = getRoomId(targetUserId);
-    print('📨 getMessages - targetUserId: $targetUserId');
-    print('📨 getMessages - roomId: $roomId');
 
     if (roomId.isEmpty) {
-      print('❌ roomId فارغ! لا يمكن جلب الرسائل');
       return Stream.value([]);
     }
 
-    final controller = StreamController<List<ChatModel>>.broadcast();
+    // إعادة استخدام الـ StreamController الموجود أو إنشاء واحد جديد
+    if (!_messageStreamControllers.containsKey(roomId) ||
+        _messageStreamControllers[roomId]!.isClosed) {
+      _messageStreamControllers[roomId] = StreamController<List<ChatModel>>.broadcast();
+    }
+
+    final controller = _messageStreamControllers[roomId]!;
 
     if (!_messagesCache.containsKey(roomId)) {
       _messagesCache[roomId] = <ChatModel>[].obs;
@@ -575,6 +619,15 @@ class ChatController extends GetxController {
     _setupRealtimeSubscription(roomId, controller);
 
     return controller.stream;
+  }
+
+  /// إرسال تحديث للـ Stream عند إضافة رسالة جديدة
+  void _notifyMessageAdded(String roomId) {
+    if (_messageStreamControllers.containsKey(roomId) &&
+        !_messageStreamControllers[roomId]!.isClosed &&
+        _messagesCache.containsKey(roomId)) {
+      _messageStreamControllers[roomId]!.add(_messagesCache[roomId]!.toList());
+    }
   }
 
   /// Load messages from local database
@@ -633,7 +686,8 @@ class ChatController extends GetxController {
     try {
       final messages = await _syncService.syncMessagesForRoom(roomId);
 
-      // Merge with pending messages
+      // جلب الرسائل المعلقة من كلا المصدرين
+      // 1. من جدول الرسائل المعلقة (PendingMessageModel)
       final pendingMessages = _localDb.getPendingMessagesByRoom(roomId);
       final pendingChatModels = pendingMessages.map((pm) => ChatModel(
         id: pm.id,
@@ -646,9 +700,17 @@ class ChatController extends GetxController {
         roomId: pm.roomId,
       )).toList();
 
+      // 2. من جدول الرسائل العادية (الرسائل مع حالة pending)
+      final localPendingMessages = _localDb.getMessagesByRoom(roomId)
+          .where((msg) => msg.syncStatus == MessageSyncStatus.pending ||
+                         msg.syncStatus == MessageSyncStatus.uploading ||
+                         msg.syncStatus == MessageSyncStatus.failed)
+          .toList();
+
       final allMessages = <ChatModel>[];
       final seenIds = <String>{};
 
+      // أولاً: الرسائل من السيرفر
       for (final msg in messages) {
         if (msg.id != null && !seenIds.contains(msg.id)) {
           allMessages.add(msg);
@@ -656,7 +718,16 @@ class ChatController extends GetxController {
         }
       }
 
+      // ثانياً: الرسائل المعلقة من جدول PendingMessage
       for (final msg in pendingChatModels) {
+        if (msg.id != null && !seenIds.contains(msg.id)) {
+          allMessages.add(msg);
+          seenIds.add(msg.id!);
+        }
+      }
+
+      // ثالثاً: الرسائل المحلية مع حالة pending/uploading/failed
+      for (final msg in localPendingMessages) {
         if (msg.id != null && !seenIds.contains(msg.id)) {
           allMessages.add(msg);
           seenIds.add(msg.id!);
@@ -667,7 +738,7 @@ class ChatController extends GetxController {
 
       _messagesCache[roomId]?.value = allMessages;
       controller.add(allMessages);
-      print('📬 Synced ${messages.length} messages from server');
+      print('📬 Synced ${messages.length} server + ${pendingChatModels.length + localPendingMessages.length} pending messages');
     } catch (e) {
       print('❌ Error syncing messages: $e');
     }
