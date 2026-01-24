@@ -5,6 +5,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:wissal_app/config/colors.dart';
 import 'package:wissal_app/model/message_sync_status.dart';
 import 'package:wissal_app/widgets/message_status_indicator.dart';
+import 'package:wissal_app/widgets/reaction_picker.dart';
+import 'package:wissal_app/controller/reactions_controller/reactions_controller.dart';
 
 class ChatBubbel extends StatefulWidget {
   final String message;
@@ -21,6 +23,7 @@ class ChatBubbel extends StatefulWidget {
   final VoidCallback? onPin;
   final VoidCallback? onUnpin;
   final VoidCallback? onForward;
+  final VoidCallback? onSave;
   final bool isPinned;
   final bool isDeleted;
   final bool isEdited;
@@ -31,6 +34,9 @@ class ChatBubbel extends StatefulWidget {
   final String? forwardedFrom;
   final MessageSyncStatus? syncStatus;
   final VoidCallback? onRetry;
+  final List<String>? reactions;
+  final Function(String emoji)? onReact;
+  final String? currentUserId;
 
   const ChatBubbel({
     super.key,
@@ -48,6 +54,7 @@ class ChatBubbel extends StatefulWidget {
     this.onPin,
     this.onUnpin,
     this.onForward,
+    this.onSave,
     this.isPinned = false,
     this.isDeleted = false,
     this.isEdited = false,
@@ -58,6 +65,9 @@ class ChatBubbel extends StatefulWidget {
     this.forwardedFrom,
     this.syncStatus,
     this.onRetry,
+    this.reactions,
+    this.onReact,
+    this.currentUserId,
   });
 
   @override
@@ -73,6 +83,10 @@ class _ChatBubbelState extends State<ChatBubbel> {
   late final StreamSubscription _stateSub;
   late final StreamSubscription _positionSub;
   late final StreamSubscription _durationSub;
+
+  // Reaction picker state
+  bool _showReactionPicker = false;
+  OverlayEntry? _reactionOverlay;
 
   @override
   void initState() {
@@ -104,7 +118,89 @@ class _ChatBubbelState extends State<ChatBubbel> {
     _positionSub.cancel();
     _durationSub.cancel();
     _audioPlayer.dispose();
+    _hideReactionPicker();
     super.dispose();
+  }
+
+  void _showReactionPickerOverlay(BuildContext context, Offset position) {
+    if (widget.onReact == null || widget.isDeleted) return;
+
+    _hideReactionPicker();
+
+    final isMe = widget.isComming;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final currentReaction = ReactionsController.getCurrentUserReaction(
+      widget.reactions,
+      widget.currentUserId,
+    );
+
+    // Calculate position to show above the tap point, centered
+    final pickerWidth = 320.0; // Approximate width of reaction picker
+    double leftPosition = position.dx - (pickerWidth / 2);
+
+    // Make sure it doesn't go off screen
+    if (leftPosition < 8) leftPosition = 8;
+    if (leftPosition + pickerWidth > screenWidth - 8) {
+      leftPosition = screenWidth - pickerWidth - 8;
+    }
+
+    _reactionOverlay = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          // خلفية شفافة للإغلاق عند الضغط
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _hideReactionPicker,
+              child: Container(color: Colors.black.withOpacity(0.3)),
+            ),
+          ),
+          // شريط التفاعلات - يظهر فوق الرسالة
+          Positioned(
+            left: leftPosition,
+            top: position.dy - 70,
+            child: TweenAnimationBuilder<double>(
+              duration: const Duration(milliseconds: 200),
+              tween: Tween(begin: 0.8, end: 1.0),
+              curve: Curves.easeOut,
+              builder: (context, scale, child) {
+                return Transform.scale(
+                  scale: scale,
+                  child: child,
+                );
+              },
+              child: Material(
+                color: Colors.transparent,
+                elevation: 8,
+                child: ReactionPicker(
+                  currentReaction: currentReaction,
+                  onReactionSelected: (emoji) {
+                    widget.onReact?.call(emoji);
+                    _hideReactionPicker();
+                  },
+                  onRemoveReaction: currentReaction != null
+                      ? () {
+                          widget.onReact?.call('');
+                          _hideReactionPicker();
+                        }
+                      : null,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    Overlay.of(context).insert(_reactionOverlay!);
+    setState(() => _showReactionPicker = true);
+  }
+
+  void _hideReactionPicker() {
+    _reactionOverlay?.remove();
+    _reactionOverlay = null;
+    if (mounted) {
+      setState(() => _showReactionPicker = false);
+    }
   }
 
   void _togglePlayPause() {
@@ -123,7 +219,8 @@ class _ChatBubbelState extends State<ChatBubbel> {
   }
 
   void _showMessageOptions(BuildContext context, TapDownDetails details) {
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
     final position = RelativeRect.fromRect(
       Rect.fromPoints(details.globalPosition, details.globalPosition),
       Offset.zero & overlay.size,
@@ -135,6 +232,26 @@ class _ChatBubbelState extends State<ChatBubbel> {
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       items: [
+        // React option
+        if (widget.onReact != null)
+          PopupMenuItem<String>(
+            value: 'react',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.pink.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text('❤️', style: TextStyle(fontSize: 16)),
+                ),
+                const SizedBox(width: 12),
+                const Text('React',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
         if (widget.isPinned && widget.onUnpin != null)
           PopupMenuItem<String>(
             value: 'unpin',
@@ -146,10 +263,13 @@ class _ChatBubbelState extends State<ChatBubbel> {
                     color: Colors.orange.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.push_pin, color: Colors.orange, size: 20),
+                  child: const Icon(Icons.push_pin,
+                      color: Colors.orange, size: 20),
                 ),
                 const SizedBox(width: 12),
-                const Text('Unpin', style: TextStyle(fontWeight: FontWeight.w500, color: Colors.orange)),
+                const Text('Unpin',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w500, color: Colors.orange)),
               ],
             ),
           )
@@ -164,10 +284,12 @@ class _ChatBubbelState extends State<ChatBubbel> {
                     color: Colors.amber.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.push_pin_outlined, color: Colors.amber, size: 20),
+                  child: const Icon(Icons.push_pin_outlined,
+                      color: Colors.amber, size: 20),
                 ),
                 const SizedBox(width: 12),
-                const Text('Pin', style: TextStyle(fontWeight: FontWeight.w500)),
+                const Text('Pin',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
               ],
             ),
           ),
@@ -182,10 +304,32 @@ class _ChatBubbelState extends State<ChatBubbel> {
                     color: Colors.green.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.shortcut, color: Colors.green, size: 20),
+                  child:
+                      const Icon(Icons.shortcut, color: Colors.green, size: 20),
                 ),
                 const SizedBox(width: 12),
-                const Text('Forward', style: TextStyle(fontWeight: FontWeight.w500)),
+                const Text('Forward',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        if (widget.onSave != null)
+          PopupMenuItem<String>(
+            value: 'save',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.bookmark_add_outlined,
+                      color: Colors.blue, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Save',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
               ],
             ),
           ),
@@ -200,10 +344,12 @@ class _ChatBubbelState extends State<ChatBubbel> {
                     color: Colors.blue.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.edit_outlined, color: Colors.blue, size: 20),
+                  child: const Icon(Icons.edit_outlined,
+                      color: Colors.blue, size: 20),
                 ),
                 const SizedBox(width: 12),
-                const Text('Edit', style: TextStyle(fontWeight: FontWeight.w500)),
+                const Text('Edit',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
               ],
             ),
           ),
@@ -218,21 +364,31 @@ class _ChatBubbelState extends State<ChatBubbel> {
                     color: Colors.red.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                  child: const Icon(Icons.delete_outline,
+                      color: Colors.red, size: 20),
                 ),
                 const SizedBox(width: 12),
-                const Text('Delete', style: TextStyle(fontWeight: FontWeight.w500, color: Colors.red)),
+                const Text('Delete',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w500, color: Colors.red)),
               ],
             ),
           ),
       ],
     ).then((value) {
-      if (value == 'pin') {
+      if (value == 'react') {
+        // Show reaction picker
+        if (_tapDownDetails != null) {
+          _showReactionPickerOverlay(context, _tapDownDetails!.globalPosition);
+        }
+      } else if (value == 'pin') {
         widget.onPin!();
       } else if (value == 'unpin') {
         widget.onUnpin!();
       } else if (value == 'forward') {
         widget.onForward!();
+      } else if (value == 'save') {
+        widget.onSave!();
       } else if (value == 'edit') {
         widget.onEdit!();
       } else if (value == 'delete') {
@@ -250,7 +406,8 @@ class _ChatBubbelState extends State<ChatBubbel> {
       try {
         final decoded = jsonDecode(widget.imgUrl);
         if (decoded is List) {
-          return List<String>.from(decoded.where((e) => e != null && e.toString().isNotEmpty));
+          return List<String>.from(
+              decoded.where((e) => e != null && e.toString().isNotEmpty));
         }
       } catch (_) {}
     }
@@ -299,7 +456,8 @@ class _ChatBubbelState extends State<ChatBubbel> {
     );
   }
 
-  void _showImageGallery(BuildContext context, List<String> images, int initialIndex) {
+  void _showImageGallery(
+      BuildContext context, List<String> images, int initialIndex) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -348,13 +506,19 @@ class _ChatBubbelState extends State<ChatBubbel> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.broken_image,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.5),
                       size: 40),
                   const SizedBox(height: 8),
                   Text(
                     'Failed to load image',
                     style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.5)),
                   ),
                 ],
               ),
@@ -404,7 +568,8 @@ class _ChatBubbelState extends State<ChatBubbel> {
     );
   }
 
-  Widget _buildGridLayout(BuildContext context, List<String> images, int displayCount, int remainingCount) {
+  Widget _buildGridLayout(BuildContext context, List<String> images,
+      int displayCount, int remainingCount) {
     if (displayCount == 2) {
       return Row(
         children: [
@@ -530,7 +695,10 @@ class _ChatBubbelState extends State<ChatBubbel> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primaryContainer
+                    .withOpacity(0.5),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(18),
                   topRight: const Radius.circular(18),
@@ -538,8 +706,7 @@ class _ChatBubbelState extends State<ChatBubbel> {
                   bottomRight: Radius.circular(isMe ? 4 : 18),
                 ),
                 border: Border.all(
-                    color: Theme.of(context).dividerColor,
-                    width: 0.5),
+                    color: Theme.of(context).dividerColor, width: 0.5),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -547,13 +714,19 @@ class _ChatBubbelState extends State<ChatBubbel> {
                   Icon(
                     Icons.block,
                     size: 16,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.5),
                   ),
                   const SizedBox(width: 8),
                   Text(
                     'This message was deleted',
                     style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.5),
                       fontStyle: FontStyle.italic,
                       fontSize: 14,
                     ),
@@ -574,10 +747,10 @@ class _ChatBubbelState extends State<ChatBubbel> {
       );
     }
 
-    // Bubble colors - use theme colors
+    // Bubble colors - different colors for sent vs received
     var bubbleColor = isMe
         ? (isDark ? dSentBubbleColor : lSentBubbleColor)
-        : Theme.of(context).colorScheme.primaryContainer;
+        : (isDark ? dReceivedBubbleColor : lReceivedBubbleColor);
 
     // Search highlight
     if (widget.isHighlighted) {
@@ -585,7 +758,8 @@ class _ChatBubbelState extends State<ChatBubbel> {
     } else if (widget.isSearchMatch) {
       bubbleColor = isMe
           ? (isDark ? dSentBubbleColor : lSentBubbleColor).withOpacity(0.8)
-          : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.8);
+          : (isDark ? dReceivedBubbleColor : lReceivedBubbleColor)
+              .withOpacity(0.8);
     }
 
     final imageUrls = _getImageUrls();
@@ -593,9 +767,12 @@ class _ChatBubbelState extends State<ChatBubbel> {
     final hasMultipleImages = imageUrls.length > 1;
     final hasAudio = widget.audioUrl.trim().isNotEmpty;
     final hasText = widget.message.trim().isNotEmpty;
+    final hasReactions =
+        widget.reactions != null && widget.reactions!.isNotEmpty;
 
     // Text color based on bubble
-    final textColor = isMe ? Colors.white : Theme.of(context).colorScheme.onSurface;
+    final textColor =
+        isMe ? Colors.white : Theme.of(context).colorScheme.onSurface;
     final secondaryTextColor = isMe
         ? Colors.white.withOpacity(0.7)
         : Theme.of(context).colorScheme.onSurface.withOpacity(0.6);
@@ -608,7 +785,24 @@ class _ChatBubbelState extends State<ChatBubbel> {
         children: [
           GestureDetector(
             onTapDown: (details) => _tapDownDetails = details,
-            onLongPress: (widget.onDelete != null || widget.onEdit != null || widget.onPin != null || widget.onUnpin != null || widget.onForward != null) && !widget.isDeleted
+            onDoubleTapDown: (details) => _tapDownDetails = details,
+            onDoubleTap: widget.onReact != null && !widget.isDeleted
+                ? () {
+                    if (_tapDownDetails != null) {
+                      _showReactionPickerOverlay(
+                        context,
+                        _tapDownDetails!.globalPosition,
+                      );
+                    }
+                  }
+                : null,
+            onLongPress: (widget.onDelete != null ||
+                        widget.onEdit != null ||
+                        widget.onPin != null ||
+                        widget.onUnpin != null ||
+                        widget.onForward != null ||
+                        widget.onSave != null) &&
+                    !widget.isDeleted
                 ? () {
                     if (_tapDownDetails != null) {
                       _showMessageOptions(context, _tapDownDetails!);
@@ -667,9 +861,13 @@ class _ChatBubbelState extends State<ChatBubbel> {
                     boxShadow: [
                       BoxShadow(
                         color: widget.isHighlighted || widget.isPinnedHighlight
-                            ? Colors.amber.withOpacity(widget.isPinnedHighlight ? 0.6 : 0.4)
+                            ? Colors.amber.withOpacity(
+                                widget.isPinnedHighlight ? 0.6 : 0.4)
                             : Colors.black.withOpacity(0.08),
-                        blurRadius: widget.isHighlighted || widget.isPinnedHighlight ? 12 : 8,
+                        blurRadius:
+                            widget.isHighlighted || widget.isPinnedHighlight
+                                ? 12
+                                : 8,
                         offset: const Offset(0, 2),
                       ),
                     ],
@@ -687,9 +885,13 @@ class _ChatBubbelState extends State<ChatBubbel> {
                         // Forwarded indicator
                         if (widget.isForwarded)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 6),
                             decoration: BoxDecoration(
-                              color: (isMe ? Colors.white : Theme.of(context).colorScheme.onSurface).withOpacity(0.1),
+                              color: (isMe
+                                      ? Colors.white
+                                      : Theme.of(context).colorScheme.onSurface)
+                                  .withOpacity(0.1),
                               borderRadius: const BorderRadius.only(
                                 topLeft: Radius.circular(18),
                                 topRight: Radius.circular(18),
@@ -715,13 +917,11 @@ class _ChatBubbelState extends State<ChatBubbel> {
                               ],
                             ),
                           ),
-                        // Images
                         if (hasImage)
                           hasMultipleImages
                               ? _buildImageGrid(context, imageUrls)
                               : _buildSingleImage(context, imageUrls.first),
 
-                        // Voice message
                         if (hasAudio)
                           Padding(
                             padding: const EdgeInsets.all(12),
@@ -734,7 +934,12 @@ class _ChatBubbelState extends State<ChatBubbel> {
                                     width: 44,
                                     height: 44,
                                     decoration: BoxDecoration(
-                                      color: (isMe ? Colors.white : Theme.of(context).colorScheme.primary).withOpacity(0.2),
+                                      color: (isMe
+                                              ? Colors.white
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .primary)
+                                          .withOpacity(0.2),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Icon(
@@ -749,7 +954,8 @@ class _ChatBubbelState extends State<ChatBubbel> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       SizedBox(
                                         height: 32,
@@ -757,17 +963,20 @@ class _ChatBubbelState extends State<ChatBubbel> {
                                           mainAxisAlignment:
                                               MainAxisAlignment.spaceEvenly,
                                           children: List.generate(20, (index) {
-                                            final progress = _duration.inMilliseconds > 0
-                                                ? _position.inMilliseconds /
-                                                    _duration.inMilliseconds
-                                                : 0.0;
-                                            final isActive = index / 20 <= progress;
+                                            final progress =
+                                                _duration.inMilliseconds > 0
+                                                    ? _position.inMilliseconds /
+                                                        _duration.inMilliseconds
+                                                    : 0.0;
+                                            final isActive =
+                                                index / 20 <= progress;
                                             final baseHeight = index % 3 == 0
                                                 ? 0.8
                                                 : index % 2 == 0
                                                     ? 0.5
                                                     : 0.3;
-                                            final waveHeight = 8 + 12 * baseHeight;
+                                            final waveHeight =
+                                                8 + 12 * baseHeight;
 
                                             return Container(
                                               width: 3,
@@ -775,8 +984,10 @@ class _ChatBubbelState extends State<ChatBubbel> {
                                               decoration: BoxDecoration(
                                                 color: isActive
                                                     ? textColor
-                                                    : textColor.withOpacity(0.4),
-                                                borderRadius: BorderRadius.circular(2),
+                                                    : textColor
+                                                        .withOpacity(0.4),
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
                                               ),
                                             );
                                           }),
@@ -810,7 +1021,6 @@ class _ChatBubbelState extends State<ChatBubbel> {
                             ),
                           ),
 
-                        // Text message
                         if (hasText)
                           Padding(
                             padding: EdgeInsets.only(
@@ -829,7 +1039,6 @@ class _ChatBubbelState extends State<ChatBubbel> {
                             ),
                           ),
 
-                        // Time, status, and edit indicator
                         Padding(
                           padding: const EdgeInsets.only(
                             left: 14,
@@ -857,12 +1066,12 @@ class _ChatBubbelState extends State<ChatBubbel> {
                               ),
                               if (isMe) ...[
                                 const SizedBox(width: 4),
-                                // مؤشر حالة الرسالة الموحد
                                 MessageStatusIndicator(
                                   status: widget.syncStatus,
                                   readStatus: widget.status,
                                   size: 16,
-                                  onRetry: widget.syncStatus == MessageSyncStatus.failed
+                                  onRetry: widget.syncStatus ==
+                                          MessageSyncStatus.failed
                                       ? widget.onRetry
                                       : null,
                                 ),
@@ -877,13 +1086,27 @@ class _ChatBubbelState extends State<ChatBubbel> {
               ],
             ),
           ),
+          if (hasReactions)
+            Align(
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: isMe ? 0 : 12,
+                  right: isMe ? 12 : 0,
+                ),
+                child: ReactionsDisplay(
+                  reactions: widget.reactions,
+                  isMe: isMe,
+                  onTap: () {},
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-/// Image gallery viewer
 class _ImageGalleryViewer extends StatefulWidget {
   final List<String> images;
   final int initialIndex;

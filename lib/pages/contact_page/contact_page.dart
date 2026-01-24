@@ -7,6 +7,7 @@ import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/pages/Homepage/widgets/group/new_group/new_group.dart';
 import 'package:wissal_app/pages/chat_page/chat_page.dart';
 import 'package:wissal_app/widgets/skeleton_loading.dart';
+import 'package:wissal_app/utils/responsive.dart';
 
 import '../../controller/chat_controller/chat_controller.dart';
 
@@ -68,6 +69,7 @@ class _ContactPageState extends State<ContactPage> {
     return Scaffold(
       appBar: AppBar(
         elevation: 0,
+        automaticallyImplyLeading: false,
         title: Obx(() => isSearching.value
             ? _buildSearchField(isDark)
             : Text('contacts'.tr)),
@@ -93,7 +95,7 @@ class _ContactPageState extends State<ContactPage> {
             // قسم الإجراءات السريعة
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: Responsive.padding(all: 16),
                 child: Column(
                   children: [
                     _buildActionCard(
@@ -103,7 +105,7 @@ class _ContactPageState extends State<ContactPage> {
                       color: theme.colorScheme.primary,
                       onTap: () => _showAddContactDialog(),
                     ),
-                    const SizedBox(height: 12),
+                    Responsive.verticalSpace(12),
                     _buildActionCard(
                       icon: Icons.group_add_rounded,
                       title: 'new_group'.tr,
@@ -119,15 +121,15 @@ class _ContactPageState extends State<ContactPage> {
             // عنوان جهات الاتصال
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                padding: Responsive.padding(left: 16, top: 8, right: 16, bottom: 8),
                 child: Row(
                   children: [
                     Icon(
                       Icons.people_outline_rounded,
-                      size: 20,
+                      size: Responsive.iconSize(20),
                       color: theme.colorScheme.primary,
                     ),
-                    const SizedBox(width: 8),
+                    Responsive.horizontalSpace(8),
                     Text(
                       'contacts_on_app'.tr,
                       style: theme.textTheme.titleSmall?.copyWith(
@@ -168,8 +170,8 @@ class _ContactPageState extends State<ContactPage> {
               ),
 
             // مساحة للـ bottom navbar
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 100),
+            SliverToBoxAdapter(
+              child: SizedBox(height: Responsive.h(100)),
             ),
           ],
         );
@@ -210,23 +212,23 @@ class _ContactPageState extends State<ContactPage> {
       color: isDark
           ? color.withOpacity(0.15)
           : color.withOpacity(0.08),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: Responsive.borderRadius(16),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: Responsive.borderRadius(16),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: Responsive.padding(all: 16),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: Responsive.padding(all: 12),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: Responsive.borderRadius(12),
                 ),
-                child: Icon(icon, color: color, size: 24),
+                child: Icon(icon, color: color, size: Responsive.iconSize(24)),
               ),
-              const SizedBox(width: 16),
+              Responsive.horizontalSpace(16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,7 +239,7 @@ class _ContactPageState extends State<ContactPage> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    Responsive.verticalSpace(2),
                     Text(
                       subtitle,
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -249,7 +251,7 @@ class _ContactPageState extends State<ContactPage> {
               ),
               Icon(
                 Icons.arrow_forward_ios_rounded,
-                size: 16,
+                size: Responsive.iconSize(16),
                 color: theme.hintColor,
               ),
             ],
@@ -265,16 +267,16 @@ class _ContactPageState extends State<ContactPage> {
         contact.email == profileController.currentUser.value.email;
 
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      contentPadding: Responsive.symmetricPadding(horizontal: 16, vertical: 4),
       leading: CircleAvatar(
-        radius: 26,
+        radius: Responsive.avatarRadius(26),
         backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
         child: contact.profileimage != null && contact.profileimage!.isNotEmpty
             ? ClipOval(
                 child: Image.network(
                   contact.profileimage!,
-                  width: 52,
-                  height: 52,
+                  width: Responsive.containerSize(52),
+                  height: Responsive.containerSize(52),
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) {
                     return Text(
@@ -282,7 +284,7 @@ class _ContactPageState extends State<ContactPage> {
                       style: TextStyle(
                         color: theme.colorScheme.primary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 20,
+                        fontSize: Responsive.fontSize(20),
                       ),
                     );
                   },
@@ -291,7 +293,7 @@ class _ContactPageState extends State<ContactPage> {
                     return Icon(
                       Icons.person,
                       color: theme.colorScheme.primary,
-                      size: 24,
+                      size: Responsive.iconSize(24),
                     );
                   },
                 ),
@@ -301,7 +303,7 @@ class _ContactPageState extends State<ContactPage> {
                 style: TextStyle(
                   color: theme.colorScheme.primary,
                   fontWeight: FontWeight.bold,
-                  fontSize: 20,
+                  fontSize: Responsive.fontSize(20),
                 ),
               ),
       ),
@@ -319,16 +321,16 @@ class _ContactPageState extends State<ContactPage> {
           ),
           if (isCurrentUser)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: Responsive.symmetricPadding(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
                 color: theme.colorScheme.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: Responsive.borderRadius(10),
               ),
               child: Text(
                 'you'.tr,
                 style: TextStyle(
                   color: theme.colorScheme.primary,
-                  fontSize: 11,
+                  fontSize: Responsive.fontSize(11),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -363,26 +365,26 @@ class _ContactPageState extends State<ContactPage> {
             searchQuery.value.isEmpty
                 ? Icons.contacts_outlined
                 : Icons.search_off_rounded,
-            size: 80,
+            size: Responsive.iconSize(80),
             color: Colors.grey.withOpacity(0.5),
           ),
-          const SizedBox(height: 16),
+          Responsive.verticalSpace(16),
           Text(
             searchQuery.value.isEmpty
                 ? 'no_contacts'.tr
                 : 'no_results'.tr,
             style: TextStyle(
               color: Colors.grey[600],
-              fontSize: 16,
+              fontSize: Responsive.fontSize(16),
             ),
           ),
           if (searchQuery.value.isEmpty) ...[
-            const SizedBox(height: 8),
+            Responsive.verticalSpace(8),
             Text(
               'invite_friends'.tr,
               style: TextStyle(
                 color: Colors.grey[500],
-                fontSize: 14,
+                fontSize: Responsive.fontSize(14),
               ),
             ),
           ],
@@ -398,12 +400,12 @@ class _ContactPageState extends State<ContactPage> {
     Get.dialog(
       AlertDialog(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: Responsive.borderRadius(20),
         ),
         title: Row(
           children: [
             Icon(Icons.person_add_rounded, color: theme.colorScheme.primary),
-            const SizedBox(width: 12),
+            Responsive.horizontalSpace(12),
             Text('add_contact'.tr),
           ],
         ),
@@ -418,7 +420,7 @@ class _ContactPageState extends State<ContactPage> {
                 hintText: 'enter_email'.tr,
                 prefixIcon: const Icon(Icons.email_outlined),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: Responsive.borderRadius(12),
                 ),
               ),
             ),
@@ -443,7 +445,7 @@ class _ContactPageState extends State<ContactPage> {
             },
             style: ElevatedButton.styleFrom(
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: Responsive.borderRadius(12),
               ),
             ),
             child: Text('add'.tr),

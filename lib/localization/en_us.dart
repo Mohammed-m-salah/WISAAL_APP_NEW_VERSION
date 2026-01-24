@@ -28,6 +28,8 @@ const Map<String, String> enUS = {
   'dark_mode': 'Dark Mode',
   'light_mode': 'Light Mode',
   'system_mode': 'System Default',
+  'dark_mode_on': 'Dark theme enabled',
+  'light_mode_on': 'Light theme enabled',
 
   // Language
   'language': 'Language',
@@ -84,6 +86,10 @@ const Map<String, String> enUS = {
   'messages': 'Messages',
   'new_message': 'New Message',
   'type_message': 'Type a message...',
+  'say_hello_to': 'Say hello to @name!',
+  'start_conversation': 'Start a new conversation',
+  'tap_to_wave': 'Wave Hello',
+  'or_tap_emoji': 'or tap the emoji above',
   'send': 'Send',
   'delivered': 'Delivered',
   'read': 'Read',
@@ -100,7 +106,7 @@ const Map<String, String> enUS = {
   'delete_for_everyone': 'Delete for everyone',
   'message_deleted': 'This message was deleted',
   'no_messages': 'No messages yet',
-  'start_conversation': 'Start a conversation',
+  'start_chatting': 'Start a conversation',
   'pin_message': 'Pin Message',
   'unpin_message': 'Unpin Message',
   'pinned_messages': 'Pinned Messages',
@@ -232,4 +238,18 @@ const Map<String, String> enUS = {
   'no_shared_links': 'No shared links',
   'shared_media': 'Shared Media',
   'view_profile': 'View Profile',
+
+  // Saved Messages
+  'saved_messages': 'Saved Messages',
+  'no_saved_messages': 'No saved messages',
+  'saved_messages_hint': 'Save messages from chats or write notes to yourself here',
+  'message_saved': 'Message saved',
+  'save_message': 'Save Message',
+  'saved_from': 'Saved from',
+  'voice_message': 'Voice Message',
+  'uploading': 'Uploading...',
+
+  // Reactions
+  'reactions': 'Reactions',
+  'react': 'React',
 };

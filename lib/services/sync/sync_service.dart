@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wissal_app/model/chat_model.dart';
@@ -17,6 +19,41 @@ class SyncService extends GetxService {
 
   final RxBool isSyncing = false.obs;
   final RxString syncStatus = ''.obs;
+
+  // Retry configuration
+  static const int _maxRetries = 3;
+  static const Duration _initialDelay = Duration(seconds: 2);
+
+  /// Helper method for retry with exponential backoff
+  Future<T> _retryWithBackoff<T>(
+    Future<T> Function() operation, {
+    int maxRetries = _maxRetries,
+    Duration initialDelay = _initialDelay,
+  }) async {
+    int attempt = 0;
+    Duration delay = initialDelay;
+
+    while (true) {
+      try {
+        return await operation();
+      } catch (e) {
+        attempt++;
+        final isRetryable = e is SocketException ||
+            e is HandshakeException ||
+            e is TimeoutException ||
+            e.toString().contains('Connection terminated') ||
+            e.toString().contains('timedOut');
+
+        if (attempt >= maxRetries || !isRetryable) {
+          rethrow;
+        }
+
+        print('⚠️ Retry attempt $attempt/$maxRetries after ${delay.inSeconds}s - Error: $e');
+        await Future.delayed(delay);
+        delay *= 2; // Exponential backoff
+      }
+    }
+  }
 
   Future<SyncService> init() async {
     _localDb = Get.find<LocalDatabaseService>();
@@ -64,7 +101,7 @@ class SyncService extends GetxService {
     }
   }
 
-  /// Sync chat rooms from server
+  /// Sync chat rooms from server with retry logic
   Future<void> syncChatRooms() async {
     final currentUser = auth.currentUser;
     if (currentUser == null) return;
@@ -72,9 +109,11 @@ class SyncService extends GetxService {
     try {
       final userId = currentUser.id;
 
-      final List roomData = await db.from('chat_rooms').select().or(
-        'and(senderId.eq.$userId),and(reciverId.eq.$userId)',
-      );
+      final List roomData = await _retryWithBackoff(() async {
+        return await db.from('chat_rooms').select().or(
+          'and(senderId.eq.$userId),and(reciverId.eq.$userId)',
+        );
+      });
 
       final List<ChatRoomModel> rooms = roomData
           .map((data) => ChatRoomModel.fromJson(data))
@@ -86,11 +125,11 @@ class SyncService extends GetxService {
       print('📥 Synced ${rooms.length} chat rooms');
     } catch (e) {
       print('❌ Error syncing chat rooms: $e');
-      rethrow;
+      // Don't rethrow - allow app to continue with local data
     }
   }
 
-  /// Sync messages for a specific room
+  /// Sync messages for a specific room with retry logic
   Future<List<ChatModel>> syncMessagesForRoom(String roomId, {bool forceFullSync = false}) async {
     if (!_connectivity.isOnline.value) {
       return _localDb.getMessagesByRoom(roomId);
@@ -101,18 +140,20 @@ class SyncService extends GetxService {
       final metadata = _localDb.getSyncMetadata(roomId);
       DateTime? lastSyncTime = forceFullSync ? null : metadata?.lastSyncTimestamp;
 
-      // Fetch messages from server
-      var query = db
-          .from('chats')
-          .select()
-          .eq('roomId', roomId);
+      // Fetch messages from server with retry
+      final response = await _retryWithBackoff(() async {
+        var query = db
+            .from('chats')
+            .select()
+            .eq('roomId', roomId);
 
-      // Incremental sync - only fetch new messages
-      if (lastSyncTime != null) {
-        query = query.gt('timeStamp', lastSyncTime.toIso8601String());
-      }
+        // Incremental sync - only fetch new messages
+        if (lastSyncTime != null) {
+          query = query.gt('timeStamp', lastSyncTime.toIso8601String());
+        }
 
-      final response = await query.order('timeStamp', ascending: true);
+        return await query.order('timeStamp', ascending: true);
+      });
 
       final serverMessages = (response as List)
           .map((data) => ChatModel.fromJson(data))
@@ -143,10 +184,12 @@ class SyncService extends GetxService {
     }
   }
 
-  /// Sync users from server
+  /// Sync users from server with retry logic
   Future<void> syncUsers() async {
     try {
-      final data = await db.from('save_users').select();
+      final data = await _retryWithBackoff(() async {
+        return await db.from('save_users').select();
+      });
 
       final users = (data as List)
           .map((userData) => UserModel.fromJson(userData))

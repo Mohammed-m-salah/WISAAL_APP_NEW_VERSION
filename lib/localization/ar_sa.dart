@@ -28,6 +28,8 @@ const Map<String, String> arSA = {
   'dark_mode': 'الوضع الداكن',
   'light_mode': 'الوضع الفاتح',
   'system_mode': 'إعدادات النظام',
+  'dark_mode_on': 'المظهر الداكن مفعل',
+  'light_mode_on': 'المظهر الفاتح مفعل',
 
   // Language
   'language': 'اللغة',
@@ -84,6 +86,10 @@ const Map<String, String> arSA = {
   'messages': 'الرسائل',
   'new_message': 'رسالة جديدة',
   'type_message': 'اكتب رسالة...',
+  'say_hello_to': 'قل مرحباً لـ @name!',
+  'start_conversation': 'ابدأ محادثة جديدة',
+  'tap_to_wave': 'لوّح للتحية',
+  'or_tap_emoji': 'أو اضغط على الإيموجي',
   'send': 'إرسال',
   'delivered': 'تم التوصيل',
   'read': 'مقروءة',
@@ -100,7 +106,7 @@ const Map<String, String> arSA = {
   'delete_for_everyone': 'حذف للجميع',
   'message_deleted': 'تم حذف هذه الرسالة',
   'no_messages': 'لا توجد رسائل بعد',
-  'start_conversation': 'ابدأ محادثة',
+  'start_chatting': 'ابدأ محادثة',
   'pin_message': 'تثبيت الرسالة',
   'unpin_message': 'إلغاء التثبيت',
   'pinned_messages': 'الرسائل المثبتة',
@@ -232,4 +238,18 @@ const Map<String, String> arSA = {
   'no_shared_links': 'لا توجد روابط مشتركة',
   'shared_media': 'الوسائط المشتركة',
   'view_profile': 'عرض الملف الشخصي',
+
+  // Saved Messages
+  'saved_messages': 'الرسائل المحفوظة',
+  'no_saved_messages': 'لا توجد رسائل محفوظة',
+  'saved_messages_hint': 'احفظ الرسائل من المحادثات أو اكتب ملاحظات لنفسك هنا',
+  'message_saved': 'تم حفظ الرسالة',
+  'save_message': 'حفظ الرسالة',
+  'saved_from': 'محفوظة من',
+  'voice_message': 'رسالة صوتية',
+  'uploading': 'جاري الرفع...',
+
+  // Reactions
+  'reactions': 'التفاعلات',
+  'react': 'تفاعل',
 };

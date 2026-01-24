@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/widgets/skeleton_loading.dart';
+import 'package:wissal_app/utils/responsive.dart';
 
 class UserProfilePage extends StatefulWidget {
   final UserModel user;
@@ -55,15 +57,31 @@ class _UserProfilePageState extends State<UserProfilePage>
       // تصنيف الوسائط
       for (final msg in messages) {
         final message = msg['message'] as String? ?? '';
-        final imageUrl = msg['imageUrl'] as String?;
+        final imageUrlRaw = msg['imageUrl'];
         final audioUrl = msg['audioUrl'] as String?;
-        final fileUrl = msg['fileUrl'] as String?;
-        final fileName = msg['fileName'] as String?;
+        final documentUrl = msg['documentUrl'] as String?;
         final timestamp = msg['timeStamp'] as String?;
 
-        // الصور
-        if (imageUrl != null && imageUrl.isNotEmpty) {
-          sharedImages.add(imageUrl);
+        // الصور - قد تكون URL واحد أو قائمة JSON
+        if (imageUrlRaw != null && imageUrlRaw.toString().isNotEmpty) {
+          final imageStr = imageUrlRaw.toString().trim();
+          if (imageStr.startsWith('[')) {
+            // قائمة صور JSON
+            try {
+              final decoded = jsonDecode(imageStr);
+              if (decoded is List) {
+                for (final url in decoded) {
+                  if (url != null && url.toString().isNotEmpty) {
+                    sharedImages.add(url.toString());
+                  }
+                }
+              }
+            } catch (_) {
+              sharedImages.add(imageStr);
+            }
+          } else {
+            sharedImages.add(imageStr);
+          }
         }
 
         // الرسائل الصوتية
@@ -76,10 +94,14 @@ class _UserProfilePageState extends State<UserProfilePage>
         }
 
         // المستندات
-        if (fileUrl != null && fileUrl.isNotEmpty) {
+        if (documentUrl != null && documentUrl.isNotEmpty) {
+          // استخراج اسم الملف من URL
+          final fileName = Uri.parse(documentUrl).pathSegments.isNotEmpty
+              ? Uri.parse(documentUrl).pathSegments.last
+              : 'document'.tr;
           sharedDocuments.add({
-            'url': fileUrl,
-            'name': fileName ?? 'document'.tr,
+            'url': documentUrl,
+            'name': fileName,
             'timestamp': timestamp,
           });
         }
@@ -114,7 +136,7 @@ class _UserProfilePageState extends State<UserProfilePage>
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
             SliverAppBar(
-              expandedHeight: 300,
+              expandedHeight: Responsive.h(320),
               pinned: true,
               backgroundColor: theme.colorScheme.primary,
               flexibleSpace: FlexibleSpaceBar(
@@ -122,7 +144,7 @@ class _UserProfilePageState extends State<UserProfilePage>
               ),
               leading: IconButton(
                 icon: Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: Responsive.padding(all: 8),
                   decoration: BoxDecoration(
                     color: Colors.black26,
                     shape: BoxShape.circle,
@@ -134,7 +156,7 @@ class _UserProfilePageState extends State<UserProfilePage>
               actions: [
                 IconButton(
                   icon: Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: Responsive.padding(all: 8),
                     decoration: BoxDecoration(
                       color: Colors.black26,
                       shape: BoxShape.circle,
@@ -201,82 +223,91 @@ class _UserProfilePageState extends State<UserProfilePage>
         ),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(height: 40),
-            // Profile Image
-            Hero(
-              tag: 'profile_${widget.user.id}',
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: ClipOval(
-                  child: hasImage
-                      ? Image.network(
-                          widget.user.profileimage!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _buildDefaultAvatar(),
-                        )
-                      : _buildDefaultAvatar(),
+        bottom: false,
+        child: Padding(
+          padding: Responsive.symmetricPadding(horizontal: 16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Responsive.verticalSpace(20),
+              // Profile Image
+              Hero(
+                tag: 'profile_${widget.user.id}',
+                child: Container(
+                  width: Responsive.containerSize(100),
+                  height: Responsive.containerSize(100),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 15,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: hasImage
+                        ? Image.network(
+                            widget.user.profileimage!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _buildDefaultAvatar(),
+                          )
+                        : _buildDefaultAvatar(),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            // Name
-            Text(
-              widget.user.name ?? 'user'.tr,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+              Responsive.verticalSpace(12),
+              // Name
+              Text(
+                widget.user.name ?? 'user'.tr,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: Responsive.fontSize(22),
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            const SizedBox(height: 4),
-            // Email or About
-            Text(
-              widget.user.about ?? widget.user.email ?? '',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
-                fontSize: 14,
+              Responsive.verticalSpace(4),
+              // Email or About
+              Text(
+                widget.user.about ?? widget.user.email ?? '',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: Responsive.fontSize(13),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            const SizedBox(height: 16),
-            // Action Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildActionButton(
-                  icon: Icons.chat,
-                  label: 'message'.tr,
-                  onTap: () => Get.back(),
-                ),
-                const SizedBox(width: 24),
-                _buildActionButton(
-                  icon: Icons.call,
-                  label: 'call'.tr,
-                  onTap: () {},
-                ),
-                const SizedBox(width: 24),
-                _buildActionButton(
-                  icon: Icons.videocam,
-                  label: 'video'.tr,
-                  onTap: () {},
-                ),
-              ],
-            ),
-          ],
+              Responsive.verticalSpace(12),
+              // Action Buttons
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildActionButton(
+                    icon: Icons.chat,
+                    label: 'message'.tr,
+                    onTap: () => Get.back(),
+                  ),
+                  Responsive.horizontalSpace(20),
+                  _buildActionButton(
+                    icon: Icons.call,
+                    label: 'call'.tr,
+                    onTap: () {},
+                  ),
+                  Responsive.horizontalSpace(20),
+                  _buildActionButton(
+                    icon: Icons.videocam,
+                    label: 'video'.tr,
+                    onTap: () {},
+                  ),
+                ],
+              ),
+              Responsive.verticalSpace(8),
+            ],
+          ),
         ),
       ),
     );
@@ -288,10 +319,10 @@ class _UserProfilePageState extends State<UserProfilePage>
       child: Center(
         child: Text(
           (widget.user.name ?? 'U')[0].toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
-            fontSize: 48,
+            fontSize: Responsive.fontSize(48),
           ),
         ),
       ),
@@ -305,21 +336,21 @@ class _UserProfilePageState extends State<UserProfilePage>
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: Responsive.borderRadius(12),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: Responsive.padding(all: 12),
             decoration: BoxDecoration(
               color: Colors.white24,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: Responsive.borderRadius(12),
             ),
-            child: Icon(icon, color: Colors.white, size: 24),
+            child: Icon(icon, color: Colors.white, size: Responsive.iconSize(24)),
           ),
-          const SizedBox(height: 4),
+          Responsive.verticalSpace(4),
           Text(
             label,
-            style: const TextStyle(color: Colors.white, fontSize: 12),
+            style: TextStyle(color: Colors.white, fontSize: Responsive.fontSize(12)),
           ),
         ],
       ),
@@ -335,11 +366,11 @@ class _UserProfilePageState extends State<UserProfilePage>
     }
 
     return GridView.builder(
-      padding: const EdgeInsets.all(4),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 4,
-        mainAxisSpacing: 4,
+      padding: Responsive.padding(all: 4),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: Responsive.gridCrossAxisCount(smallScreen: 2, mediumScreen: 3, largeScreen: 4),
+        crossAxisSpacing: Responsive.w(4),
+        mainAxisSpacing: Responsive.h(4),
       ),
       itemCount: sharedImages.length,
       itemBuilder: (context, index) {
@@ -584,15 +615,15 @@ class _UserProfilePageState extends State<UserProfilePage>
         children: [
           Icon(
             icon,
-            size: 64,
+            size: Responsive.iconSize(64),
             color: Colors.grey.withOpacity(0.5),
           ),
-          const SizedBox(height: 16),
+          Responsive.verticalSpace(16),
           Text(
             message,
             style: TextStyle(
               color: Colors.grey[600],
-              fontSize: 16,
+              fontSize: Responsive.fontSize(16),
             ),
           ),
         ],

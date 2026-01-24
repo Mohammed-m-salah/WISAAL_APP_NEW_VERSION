@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wissal_app/controller/contact_controller/contact_controller.dart';
+import 'package:wissal_app/controller/saved_messages_controller/saved_messages_controller.dart';
 import 'package:wissal_app/model/ChatRoomModel.dart';
 import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/pages/Homepage/widgets/chat_tile.dart';
 import 'package:wissal_app/pages/archived_chats/archived_chats_page.dart';
 import 'package:wissal_app/pages/chat_page/chat_page.dart';
+import 'package:wissal_app/pages/saved_messages/saved_messages_page.dart';
 import 'package:wissal_app/widgets/skeleton_loading.dart';
+import 'package:wissal_app/utils/responsive.dart';
 
 class ChatListPage extends StatefulWidget {
   const ChatListPage({super.key});
@@ -18,6 +21,7 @@ class ChatListPage extends StatefulWidget {
 
 class _ChatListPageState extends State<ChatListPage> {
   final ContactController contactController = Get.put(ContactController());
+  final SavedMessagesController savedController = Get.put(SavedMessagesController());
 
   String formatTimestamp(DateTime? timestamp) {
     if (timestamp == null) return '12:00';
@@ -70,18 +74,44 @@ class _ChatListPageState extends State<ChatListPage> {
     return RefreshIndicator(
       onRefresh: () => contactController.getChatRoomList(),
       child: Obx(() {
-        if (contactController.isLoading.value) {
+        // Show skeleton during loading or before initial load completes
+        if (contactController.isLoading.value || !contactController.hasLoadedInitially.value) {
           return const ChatListSkeleton();
         }
 
+        // Only show "no messages" after initial load is complete
         if (contactController.chatRoomList.isEmpty) {
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
               Center(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 150),
-                  child: Text('no_messages'.tr),
+                  padding: EdgeInsets.only(top: Responsive.h(150)),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.chat_bubble_outline,
+                        size: Responsive.iconSize(64),
+                        color: Colors.grey.withOpacity(0.5),
+                      ),
+                      Responsive.verticalSpace(16),
+                      Text(
+                        'no_messages'.tr,
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: Responsive.fontSize(16),
+                        ),
+                      ),
+                      Responsive.verticalSpace(8),
+                      Text(
+                        'start_chatting'.tr,
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: Responsive.fontSize(14),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -98,31 +128,116 @@ class _ChatListPageState extends State<ChatListPage> {
 
         return CustomScrollView(
           slivers: [
+            // قسم الرسائل المحفوظة
+            SliverToBoxAdapter(
+              child: InkWell(
+                onTap: () => Get.to(() => const SavedMessagesPage()),
+                child: Container(
+                  padding: Responsive.symmetricPadding(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.05),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Colors.grey.withOpacity(0.1),
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: Responsive.containerSize(50),
+                        height: Responsive.containerSize(50),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.blue, Colors.blue.shade700],
+                          ),
+                          borderRadius: Responsive.borderRadius(12),
+                        ),
+                        child: Icon(
+                          Icons.bookmark,
+                          color: Colors.white,
+                          size: Responsive.iconSize(24),
+                        ),
+                      ),
+                      Responsive.horizontalSpace(12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'saved_messages'.tr,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: Responsive.fontSize(16),
+                              ),
+                            ),
+                            Responsive.verticalSpace(2),
+                            Obx(() {
+                              final lastMsg = savedController.lastSavedMessage;
+                              return Text(
+                                lastMsg?.message ?? 'saved_messages_hint'.tr,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: Responsive.fontSize(13),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                      Obx(() {
+                        if (savedController.savedMessagesCount > 0) {
+                          return Container(
+                            padding: Responsive.symmetricPadding(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.blue,
+                              borderRadius: Responsive.borderRadius(12),
+                            ),
+                            child: Text(
+                              '${savedController.savedMessagesCount}',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: Responsive.fontSize(12),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
+                        }
+                        return const SizedBox();
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
             // قسم المحادثات المؤرشفة (زر للانتقال)
             if (contactController.archivedChatRoomList.isNotEmpty)
               SliverToBoxAdapter(
                 child: InkWell(
                   onTap: () => Get.to(() => const ArchivedChatsPage()),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: Responsive.symmetricPadding(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
                     ),
                     child: Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: Responsive.padding(all: 8),
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: Responsive.borderRadius(10),
                           ),
                           child: Icon(
                             Icons.archive,
                             color: Theme.of(context).colorScheme.primary,
-                            size: 20,
+                            size: Responsive.iconSize(20),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        Responsive.horizontalSpace(12),
                         Expanded(
                           child: Text(
                             'archived_chats'.tr,
@@ -133,21 +248,21 @@ class _ChatListPageState extends State<ChatListPage> {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: Responsive.symmetricPadding(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.primary,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: Responsive.borderRadius(12),
                           ),
                           child: Text(
                             '${contactController.archivedChatRoomList.length}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white,
-                              fontSize: 12,
+                              fontSize: Responsive.fontSize(12),
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        Responsive.horizontalSpace(8),
                         Icon(
                           Icons.chevron_right,
                           color: Theme.of(context).hintColor,
@@ -161,11 +276,11 @@ class _ChatListPageState extends State<ChatListPage> {
             if (pinnedRooms.isNotEmpty) ...[
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 16, right: 16, top: 8),
+                  padding: Responsive.padding(left: 16, right: 16, top: 8),
                   child: Row(
                     children: [
-                      Icon(Icons.push_pin, size: 18, color: Colors.amber.shade600),
-                      const SizedBox(width: 8),
+                      Icon(Icons.push_pin, size: Responsive.iconSize(18), color: Colors.amber.shade600),
+                      Responsive.horizontalSpace(8),
                       Text(
                         '${'pinned_chats'.tr} (${pinnedRooms.length})',
                         style: TextStyle(
@@ -177,7 +292,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       Text(
                         'long_press_to_drag'.tr,
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: Responsive.fontSize(11),
                           color: Colors.grey.shade500,
                         ),
                       ),
@@ -203,7 +318,7 @@ class _ChatListPageState extends State<ChatListPage> {
               if (unpinnedRooms.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: Responsive.symmetricPadding(horizontal: 16, vertical: 8),
                     child: Divider(color: Colors.grey.shade300),
                   ),
                 ),

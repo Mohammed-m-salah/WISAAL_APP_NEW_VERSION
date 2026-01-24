@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:wissal_app/controller/auth_controller/logout_controller.dart';
 import 'package:wissal_app/pages/profile_page.dart/widgets/profile_info.dart';
 import 'package:wissal_app/pages/profile_page.dart/widgets/settings_section.dart';
+import 'package:wissal_app/utils/responsive.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -16,6 +17,7 @@ class ProfilePage extends StatelessWidget {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
+        automaticallyImplyLeading: false,
         title: Text('settings'.tr),
         actions: [
           IconButton(
@@ -30,11 +32,11 @@ class ProfilePage extends StatelessWidget {
       ),
       body: SingleChildScrollView(
         child: Column(
-          children: const [
-            ProfileInfo(),
-            SizedBox(height: 8),
-            SettingsSection(),
-            SizedBox(height: 100), // Space for bottom navbar
+          children: [
+            const ProfileInfo(),
+            Responsive.verticalSpace(8),
+            const SettingsSection(),
+            SizedBox(height: Responsive.h(100)), // Space for bottom navbar
           ],
         ),
       ),
@@ -46,11 +48,11 @@ class ProfilePage extends StatelessWidget {
 
     Get.dialog(
       AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: Responsive.borderRadius(16)),
         title: Row(
           children: [
             Icon(Icons.logout_rounded, color: theme.colorScheme.error),
-            const SizedBox(width: 12),
+            Responsive.horizontalSpace(12),
             Text('logout'.tr),
           ],
         ),
@@ -69,7 +71,7 @@ class ProfilePage extends StatelessWidget {
               backgroundColor: theme.colorScheme.error,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: Responsive.borderRadius(8),
               ),
             ),
             child: Text('logout'.tr),

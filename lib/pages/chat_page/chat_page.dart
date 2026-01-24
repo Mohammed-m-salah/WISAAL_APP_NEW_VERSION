@@ -6,10 +6,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wissal_app/controller/chat_controller/chat_controller.dart';
 import 'package:wissal_app/controller/image_picker/image_picker.dart';
 import 'package:wissal_app/controller/profile_controller/profile_controller.dart';
+import 'package:wissal_app/controller/saved_messages_controller/saved_messages_controller.dart';
+import 'package:wissal_app/controller/reactions_controller/reactions_controller.dart';
 import 'package:wissal_app/model/chat_model.dart';
 import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/pages/call_page/Audio_call_page.dart';
 import 'package:wissal_app/pages/chat_page/widget/chat_pubbel.dart';
+import 'package:wissal_app/pages/chat_page/widget/welcome_message_widget.dart';
 import 'package:wissal_app/pages/user_profile/user_profile_page.dart';
 import '../../controller/call_controller/call_controller.dart';
 import '../../controller/status_controller/status_controller.dart';
@@ -17,6 +20,7 @@ import '../../controller/contact_controller/contact_controller.dart';
 import 'package:wissal_app/config/colors.dart';
 import 'package:wissal_app/widgets/connectivity_banner.dart';
 import 'package:wissal_app/model/message_sync_status.dart';
+import 'package:wissal_app/utils/responsive.dart';
 
 class ChatPage extends StatefulWidget {
   final UserModel userModel;
@@ -34,6 +38,8 @@ class _ChatPageState extends State<ChatPage>
   late ProfileController profileController;
   late ImagePickerController imagePickerController;
   late ContactController contactController;
+  late SavedMessagesController savedMessagesController;
+  late ReactionsController reactionsController;
   final TextEditingController messageController = TextEditingController();
   final TextEditingController searchController = TextEditingController();
   final ScrollController scrollController = ScrollController();
@@ -55,6 +61,8 @@ class _ChatPageState extends State<ChatPage>
     profileController = Get.put(ProfileController());
     imagePickerController = Get.put(ImagePickerController());
     contactController = Get.put(ContactController());
+    savedMessagesController = Get.put(SavedMessagesController());
+    reactionsController = Get.put(ReactionsController());
 
     _typingAnimationController = AnimationController(
       vsync: this,
@@ -423,8 +431,8 @@ class _ChatPageState extends State<ChatPage>
 
   Widget _buildTypingDots() {
     return SizedBox(
-      width: 30,
-      height: 16,
+      width: Responsive.w(30),
+      height: Responsive.h(16),
       child: AnimatedBuilder(
         animation: _typingAnimationController,
         builder: (context, child) {
@@ -441,8 +449,8 @@ class _ChatPageState extends State<ChatPage>
               return Transform.translate(
                 offset: Offset(0, -4 * bounce),
                 child: Container(
-                  width: 6,
-                  height: 6,
+                  width: Responsive.w(6),
+                  height: Responsive.h(6),
                   decoration: BoxDecoration(
                     color: Colors.greenAccent.withOpacity(0.5 + (bounce * 0.5)),
                     shape: BoxShape.circle,
@@ -713,43 +721,15 @@ class _ChatPageState extends State<ChatPage>
                           child: Text("Error loading messages"));
                     }
                     if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return Center(
-                        child: GestureDetector(
-                          onTap: () {
-                            chatcontroller.sendMessage(
-                              widget.userModel.id!,
-                              '👋',
-                              widget.userModel,
-                            );
-                          },
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(20),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer
-                                      .withOpacity(0.3),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Text(
-                                  '👋',
-                                  style: TextStyle(fontSize: 60),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'اضغط للتحية',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      return WelcomeMessageWidget(
+                        userName: widget.userModel.name ?? 'User',
+                        onTap: () {
+                          chatcontroller.sendMessage(
+                            widget.userModel.id!,
+                            '👋',
+                            widget.userModel,
+                          );
+                        },
                       );
                     }
 
@@ -758,6 +738,7 @@ class _ChatPageState extends State<ChatPage>
                     _allMessagesList = messages;
 
                     WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
                       if (isSearching && searchQuery.isNotEmpty) {
                         _updateSearchMatches(messages);
                         setState(() {});
@@ -910,6 +891,24 @@ class _ChatPageState extends State<ChatPage>
                                 onForward: !(message.isDeleted ?? false)
                                     ? () {
                                         _showForwardDialog(message);
+                                      }
+                                    : null,
+                                onSave: !(message.isDeleted ?? false)
+                                    ? () {
+                                        savedMessagesController.saveMessageFromChat(message);
+                                      }
+                                    : null,
+                                reactions: message.reactions,
+                                currentUserId: Supabase.instance.client.auth.currentUser?.id,
+                                onReact: !(message.isDeleted ?? false)
+                                    ? (emoji) {
+                                        if (emoji.isEmpty) {
+                                          // إزالة التفاعل
+                                          reactionsController.removeReaction(message.id!);
+                                        } else {
+                                          // إضافة تفاعل
+                                          reactionsController.addReaction(message.id!, emoji);
+                                        }
                                       }
                                     : null,
                                 onDelete: isMyMessage &&
@@ -1354,7 +1353,7 @@ class _ChatPageState extends State<ChatPage>
           ),
 
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: Responsive.symmetricPadding(horizontal: 8, vertical: 8),
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor,
               boxShadow: [
@@ -1388,8 +1387,8 @@ class _ChatPageState extends State<ChatPage>
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        width: 48,
-                        height: 48,
+                        width: Responsive.containerSize(48),
+                        height: Responsive.containerSize(48),
                         decoration: BoxDecoration(
                           color: isRecording
                               ? Colors.red
@@ -1408,18 +1407,18 @@ class _ChatPageState extends State<ChatPage>
                         child: Icon(
                           isRecording ? Icons.mic : Icons.mic_none,
                           color: Colors.white,
-                          size: 24,
+                          size: Responsive.iconSize(24),
                         ),
                       ),
                     );
                   }),
-                  const SizedBox(width: 8),
+                  Responsive.horizontalSpace(8),
                   Expanded(
                     child: Container(
-                      constraints: const BoxConstraints(maxHeight: 120),
+                      constraints: BoxConstraints(maxHeight: Responsive.h(120)),
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: Responsive.borderRadius(24),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -1496,7 +1495,7 @@ class _ChatPageState extends State<ChatPage>
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  Responsive.horizontalSpace(8),
                   Obx(() {
                     final canSend = chatcontroller.isTyping.value ||
                         chatcontroller.selectedImagePaths.isNotEmpty;
@@ -1520,8 +1519,8 @@ class _ChatPageState extends State<ChatPage>
                             },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        width: 48,
-                        height: 48,
+                        width: Responsive.containerSize(48),
+                        height: Responsive.containerSize(48),
                         decoration: BoxDecoration(
                           color: canSend
                               ? Theme.of(context).colorScheme.primary
@@ -1529,17 +1528,17 @@ class _ChatPageState extends State<ChatPage>
                           shape: BoxShape.circle,
                         ),
                         child: isSending
-                            ? const Padding(
-                                padding: EdgeInsets.all(12),
-                                child: CircularProgressIndicator(
+                            ? Padding(
+                                padding: Responsive.padding(all: 12),
+                                child: const CircularProgressIndicator(
                                   strokeWidth: 2,
                                   color: Colors.white,
                                 ),
                               )
-                            : const Icon(
+                            : Icon(
                                 Icons.send,
                                 color: Colors.white,
-                                size: 22,
+                                size: Responsive.iconSize(22),
                               ),
                       ),
                     );

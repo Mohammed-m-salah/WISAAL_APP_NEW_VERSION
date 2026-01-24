@@ -10,7 +10,8 @@ class ContactController extends GetxController {
   final db = Supabase.instance.client;
   final auth = Supabase.instance.client.auth;
 
-  RxBool isLoading = false.obs;
+  RxBool isLoading = true.obs;
+  RxBool hasLoadedInitially = false.obs;
   RxList<UserModel> userList = <UserModel>[].obs;
   RxList<ChatRoomModel> chatRoomList = <ChatRoomModel>[].obs;
 
@@ -151,6 +152,7 @@ class ContactController extends GetxController {
       chatRoomList.clear();
     } finally {
       isLoading.value = false;
+      hasLoadedInitially.value = true;
     }
   }
 

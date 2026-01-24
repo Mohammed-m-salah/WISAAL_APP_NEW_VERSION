@@ -6,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:app_links/app_links.dart';
 
 import 'package:wissal_app/config/page_path.dart';
+import 'package:wissal_app/utils/responsive.dart';
 import 'package:wissal_app/config/thems.dart';
 import 'package:wissal_app/controller/call_controller/call_controller.dart';
 import 'package:wissal_app/controller/theme_controller/theme_controller.dart';
@@ -164,6 +165,10 @@ class _MyAppState extends State<MyApp> {
           locale: _localeController.locale,
           fallbackLocale: const Locale('en', 'US'),
           getPages: pagePath,
+          builder: (context, child) {
+            Responsive.init(context);
+            return child ?? const SizedBox();
+          },
           home: widget.isFirstTime
               ? const WelcomPage()
               : widget.isLoggedIn

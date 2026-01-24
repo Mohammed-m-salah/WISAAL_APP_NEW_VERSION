@@ -23,6 +23,12 @@ import 'package:wissal_app/services/sync/sync_service.dart';
 import 'package:wissal_app/services/offline_queue/offline_queue_service.dart';
 
 class ChatController extends GetxController {
+  // Retry configuration for realtime connections
+  static const int _maxRealtimeRetries = 3;
+  static const Duration _realtimeRetryDelay = Duration(seconds: 3);
+  int _incomingMessagesRetryCount = 0;
+  Timer? _realtimeReconnectTimer;
+
   @override
   void onInit() {
     super.onInit();
@@ -30,6 +36,7 @@ class ChatController extends GetxController {
     auth.onAuthStateChange.listen((data) {
       if (data.session != null) {
         print("✅ الجلسة نشطة، بدء الاستماع للرسائل...");
+        _incomingMessagesRetryCount = 0;
         listenToIncomingMessages();
       }
     });
@@ -37,10 +44,19 @@ class ChatController extends GetxController {
     if (auth.currentUser != null) {
       listenToIncomingMessages();
     }
+
+    // Register for connection restored callback
+    _connectivity.onConnected(() {
+      print('🔄 Connection restored - Reconnecting realtime...');
+      _incomingMessagesRetryCount = 0;
+      _isAlreadyListening = false;
+      listenToIncomingMessages();
+    });
   }
 
   @override
   void onClose() {
+    _realtimeReconnectTimer?.cancel();
     _chatChannels.forEach((key, channel) {
       db.removeChannel(channel);
     });
@@ -92,7 +108,8 @@ class ChatController extends GetxController {
       <String, RxList<ChatModel>>{}.obs;
 
   // لحفظ الـ StreamControllers لإرسال التحديثات
-  final Map<String, StreamController<List<ChatModel>>> _messageStreamControllers = {};
+  final Map<String, StreamController<List<ChatModel>>>
+      _messageStreamControllers = {};
 
   String getRoomId(String targetUserId) {
     final currentUser = auth.currentUser;
@@ -116,7 +133,6 @@ class ChatController extends GetxController {
     return currentUser.id == targetUser.id ? targetUser : currentUser;
   }
 
-  /// Send message with offline support - FAST VERSION
   Future<void> sendMessage(
     String targetUserId,
     String message,
@@ -159,17 +175,13 @@ class ChatController extends GetxController {
     }
     _messagesCache[roomId]!.add(newChat);
 
-    // ⚡ إخطار الـ Stream بالرسالة الجديدة فوراً
     _notifyMessageAdded(roomId);
 
-    // Clear selected media فوراً
     selectedImagePaths.clear();
     selectedAudioPath.value = "";
 
-    // ⚡ حفظ محلي في الخلفية (بدون انتظار)
     _localDb.saveMessage(newChat);
 
-    // ⚡ إرسال للسيرفر في الخلفية
     _sendMessageToServer(
       chatId: chatId,
       roomId: roomId,
@@ -185,7 +197,6 @@ class ChatController extends GetxController {
     );
   }
 
-  /// إرسال الرسالة للسيرفر في الخلفية
   Future<void> _sendMessageToServer({
     required String chatId,
     required String roomId,
@@ -200,7 +211,6 @@ class ChatController extends GetxController {
     required ChatModel newChat,
   }) async {
     if (!_connectivity.isOnline.value) {
-      // Offline: add to queue
       final pendingMessage = PendingMessageModel(
         id: chatId,
         message: message,
@@ -222,10 +232,10 @@ class ChatController extends GetxController {
       String audioUrlValue = '';
       List<String> uploadedImageUrls = [];
 
-      // Upload images
       if (imagePaths.isNotEmpty) {
         for (String imagePath in imagePaths) {
-          String imgUrl = await profileController.uploadeFileToSupabase(imagePath);
+          String imgUrl =
+              await profileController.uploadeFileToSupabase(imagePath);
           if (imgUrl.isNotEmpty) {
             uploadedImageUrls.add(imgUrl);
           }
@@ -235,12 +245,11 @@ class ChatController extends GetxController {
             : jsonEncode(uploadedImageUrls);
       }
 
-      // Upload audio
       if (isVoice && audioPath.isNotEmpty) {
-        audioUrlValue = await profileController.uploadeFileToSupabase(audioPath);
+        audioUrlValue =
+            await profileController.uploadeFileToSupabase(audioPath);
       }
 
-      // Insert to Supabase
       await db.from('chats').insert({
         'id': chatId,
         'senderId': currentUserId,
@@ -253,23 +262,19 @@ class ChatController extends GetxController {
         'roomId': roomId,
       });
 
-      // Update message status to sent
       newChat.syncStatus = MessageSyncStatus.sent;
       newChat.readStatus = 'Sent';
       newChat.imageUrl = imageUrlValue;
       newChat.imageUrls = uploadedImageUrls;
       newChat.audioUrl = audioUrlValue;
 
-      // Update cache
       final index = _messagesCache[roomId]!.indexWhere((m) => m.id == chatId);
       if (index != -1) {
         _messagesCache[roomId]![index] = newChat;
-        // ⚡ إخطار الـ Stream بتحديث الحالة
         _notifyMessageAdded(roomId);
       }
       await _localDb.saveMessage(newChat);
 
-      // Update chat room in background
       String lastMessage = message.isNotEmpty
           ? message
           : uploadedImageUrls.isNotEmpty
@@ -290,7 +295,6 @@ class ChatController extends GetxController {
 
       contactController.saveContact(targetUser);
       contactController.getChatRoomList();
-
     } catch (e) {
       print("❌ Error sending message: $e");
       newChat.syncStatus = MessageSyncStatus.failed;
@@ -454,6 +458,8 @@ class ChatController extends GetxController {
         final index = _messagesCache[roomId]!.indexWhere((m) => m.id == chatId);
         if (index != -1) {
           _messagesCache[roomId]![index] = newChat;
+          // ⚡ إخطار الـ Stream بتحديث الرسالة الصوتية
+          _notifyMessageAdded(roomId);
         }
 
         print('✅ تم إرسال الرسالة الصوتية بنجاح');
@@ -529,7 +535,8 @@ class ChatController extends GetxController {
     }
   }
 
-  Future<void> editMessage(String messageId, String newMessage, String roomId) async {
+  Future<void> editMessage(
+      String messageId, String newMessage, String roomId) async {
     try {
       await db.from('chats').update({
         'message': newMessage,
@@ -598,7 +605,8 @@ class ChatController extends GetxController {
     // إعادة استخدام الـ StreamController الموجود أو إنشاء واحد جديد
     if (!_messageStreamControllers.containsKey(roomId) ||
         _messageStreamControllers[roomId]!.isClosed) {
-      _messageStreamControllers[roomId] = StreamController<List<ChatModel>>.broadcast();
+      _messageStreamControllers[roomId] =
+          StreamController<List<ChatModel>>.broadcast();
     }
 
     final controller = _messageStreamControllers[roomId]!;
@@ -640,16 +648,18 @@ class ChatController extends GetxController {
       final pendingMessages = _localDb.getPendingMessagesByRoom(roomId);
 
       // Convert pending messages to ChatModel
-      final pendingChatModels = pendingMessages.map((pm) => ChatModel(
-        id: pm.id,
-        message: pm.message,
-        senderId: pm.senderId,
-        reciverId: pm.receiverId,
-        senderName: pm.senderName,
-        timeStamp: pm.timeStamp,
-        syncStatus: pm.status,
-        roomId: pm.roomId,
-      )).toList();
+      final pendingChatModels = pendingMessages
+          .map((pm) => ChatModel(
+                id: pm.id,
+                message: pm.message,
+                senderId: pm.senderId,
+                reciverId: pm.receiverId,
+                senderName: pm.senderName,
+                timeStamp: pm.timeStamp,
+                syncStatus: pm.status,
+                roomId: pm.roomId,
+              ))
+          .toList();
 
       // Merge local and pending, avoiding duplicates
       final allMessages = <ChatModel>[];
@@ -670,11 +680,13 @@ class ChatController extends GetxController {
       }
 
       // Sort by timestamp
-      allMessages.sort((a, b) => (a.timeStamp ?? '').compareTo(b.timeStamp ?? ''));
+      allMessages
+          .sort((a, b) => (a.timeStamp ?? '').compareTo(b.timeStamp ?? ''));
 
       _messagesCache[roomId]?.value = allMessages;
       controller.add(allMessages);
-      print('📬 Loaded ${localMessages.length} local + ${pendingMessages.length} pending messages');
+      print(
+          '📬 Loaded ${localMessages.length} local + ${pendingMessages.length} pending messages');
     } catch (e) {
       print('❌ Error loading local messages: $e');
     }
@@ -689,22 +701,26 @@ class ChatController extends GetxController {
       // جلب الرسائل المعلقة من كلا المصدرين
       // 1. من جدول الرسائل المعلقة (PendingMessageModel)
       final pendingMessages = _localDb.getPendingMessagesByRoom(roomId);
-      final pendingChatModels = pendingMessages.map((pm) => ChatModel(
-        id: pm.id,
-        message: pm.message,
-        senderId: pm.senderId,
-        reciverId: pm.receiverId,
-        senderName: pm.senderName,
-        timeStamp: pm.timeStamp,
-        syncStatus: pm.status,
-        roomId: pm.roomId,
-      )).toList();
+      final pendingChatModels = pendingMessages
+          .map((pm) => ChatModel(
+                id: pm.id,
+                message: pm.message,
+                senderId: pm.senderId,
+                reciverId: pm.receiverId,
+                senderName: pm.senderName,
+                timeStamp: pm.timeStamp,
+                syncStatus: pm.status,
+                roomId: pm.roomId,
+              ))
+          .toList();
 
       // 2. من جدول الرسائل العادية (الرسائل مع حالة pending)
-      final localPendingMessages = _localDb.getMessagesByRoom(roomId)
-          .where((msg) => msg.syncStatus == MessageSyncStatus.pending ||
-                         msg.syncStatus == MessageSyncStatus.uploading ||
-                         msg.syncStatus == MessageSyncStatus.failed)
+      final localPendingMessages = _localDb
+          .getMessagesByRoom(roomId)
+          .where((msg) =>
+              msg.syncStatus == MessageSyncStatus.pending ||
+              msg.syncStatus == MessageSyncStatus.uploading ||
+              msg.syncStatus == MessageSyncStatus.failed)
           .toList();
 
       final allMessages = <ChatModel>[];
@@ -734,11 +750,13 @@ class ChatController extends GetxController {
         }
       }
 
-      allMessages.sort((a, b) => (a.timeStamp ?? '').compareTo(b.timeStamp ?? ''));
+      allMessages
+          .sort((a, b) => (a.timeStamp ?? '').compareTo(b.timeStamp ?? ''));
 
       _messagesCache[roomId]?.value = allMessages;
       controller.add(allMessages);
-      print('📬 Synced ${messages.length} server + ${pendingChatModels.length + localPendingMessages.length} pending messages');
+      print(
+          '📬 Synced ${messages.length} server + ${pendingChatModels.length + localPendingMessages.length} pending messages');
     } catch (e) {
       print('❌ Error syncing messages: $e');
     }
@@ -767,6 +785,9 @@ class ChatController extends GetxController {
       controller.addError(e);
     }
   }
+
+  // Track retry counts per room
+  final Map<String, int> _roomRetryCount = {};
 
   void _setupRealtimeSubscription(
       String roomId, StreamController<List<ChatModel>> controller) {
@@ -833,13 +854,47 @@ class ChatController extends GetxController {
           },
         )
         .subscribe((status, [error]) {
-      print('📡 حالة الاشتراك: $status');
+      print('📡 حالة الاشتراك للغرفة $roomId: $status');
+
+      if (status == RealtimeSubscribeStatus.subscribed) {
+        // Reset retry count on successful subscription
+        _roomRetryCount[roomId] = 0;
+      }
+
       if (error != null) {
         print('❌ خطأ في الاشتراك: $error');
+        _handleRoomSubscriptionError(roomId, controller, error);
       }
     });
 
     _chatChannels[roomId] = channel;
+  }
+
+  /// Handle room subscription errors with retry
+  void _handleRoomSubscriptionError(String roomId,
+      StreamController<List<ChatModel>> controller, dynamic error) {
+    final errorStr = error.toString();
+    final isRetryable = errorStr.contains('timedOut') ||
+        errorStr.contains('Connection terminated') ||
+        errorStr.contains('HandshakeException');
+
+    final currentRetry = _roomRetryCount[roomId] ?? 0;
+
+    if (isRetryable && currentRetry < _maxRealtimeRetries) {
+      _roomRetryCount[roomId] = currentRetry + 1;
+      final delay = _realtimeRetryDelay * (currentRetry + 1);
+
+      print(
+          '⚠️ Room $roomId subscription retry ${currentRetry + 1}/$_maxRealtimeRetries after ${delay.inSeconds}s');
+
+      Timer(delay, () {
+        if (_chatChannels.containsKey(roomId)) {
+          db.removeChannel(_chatChannels[roomId]!);
+          _chatChannels.remove(roomId);
+        }
+        _setupRealtimeSubscription(roomId, controller);
+      });
+    }
   }
 
   Future<List<UserModel>> filterUsers(String keyword) async {
@@ -881,6 +936,9 @@ class ChatController extends GetxController {
         .stream(primaryKey: ['id'])
         .eq('reciverId', currentUserId)
         .listen((List<Map<String, dynamic>> data) {
+          // Reset retry count on successful data
+          _incomingMessagesRetryCount = 0;
+
           if (data.isNotEmpty) {
             final message = data.last;
             final sender = message['senderName'] ?? 'مرسل مجهول';
@@ -904,7 +962,34 @@ class ChatController extends GetxController {
           }
         }, onError: (error) {
           print("❌ خطأ في Stream الرسائل: $error");
+          _handleRealtimeError(error);
         });
+  }
+
+  /// Handle realtime connection errors with retry
+  void _handleRealtimeError(dynamic error) {
+    final errorStr = error.toString();
+    final isRetryable = errorStr.contains('timedOut') ||
+        errorStr.contains('Connection terminated') ||
+        errorStr.contains('HandshakeException') ||
+        errorStr.contains('SocketException');
+
+    if (isRetryable && _incomingMessagesRetryCount < _maxRealtimeRetries) {
+      _incomingMessagesRetryCount++;
+      final delay = _realtimeRetryDelay * _incomingMessagesRetryCount;
+
+      print(
+          '⚠️ Realtime retry attempt $_incomingMessagesRetryCount/$_maxRealtimeRetries after ${delay.inSeconds}s');
+
+      _realtimeReconnectTimer?.cancel();
+      _realtimeReconnectTimer = Timer(delay, () {
+        _isAlreadyListening = false;
+        listenToIncomingMessages();
+      });
+    } else if (_incomingMessagesRetryCount >= _maxRealtimeRetries) {
+      print(
+          '❌ Max realtime retries reached. Will retry on connection restored.');
+    }
   }
 
   Stream<UserModel> getStatus(String uid) {
@@ -1086,11 +1171,13 @@ class ChatController extends GetxController {
   // ======================== تثبيت الرسائل ========================
 
   /// تثبيت رسالة في غرفة الدردشة (دعم رسائل متعددة)
-  Future<void> pinMessage(String messageId, String messageText, String roomId) async {
+  Future<void> pinMessage(
+      String messageId, String messageText, String roomId) async {
     try {
       // التحقق من عدم تثبيت الرسالة مسبقاً
       if (pinnedMessages.any((m) => m.id == messageId)) {
-        Get.snackbar("تنبيه", "هذه الرسالة مثبتة بالفعل", snackPosition: SnackPosition.BOTTOM);
+        Get.snackbar("تنبيه", "هذه الرسالة مثبتة بالفعل",
+            snackPosition: SnackPosition.BOTTOM);
         return;
       }
 
@@ -1103,7 +1190,8 @@ class ChatController extends GetxController {
 
       List<String> currentPinnedIds = [];
       if (response != null && response['pinned_message_ids'] != null) {
-        currentPinnedIds = List<String>.from(jsonDecode(response['pinned_message_ids']));
+        currentPinnedIds =
+            List<String>.from(jsonDecode(response['pinned_message_ids']));
       }
 
       // إضافة الرسالة الجديدة
@@ -1114,13 +1202,15 @@ class ChatController extends GetxController {
       }).eq('id', roomId);
 
       // إضافة الرسالة للقائمة المحلية
-      final message = _messagesCache[roomId]?.firstWhereOrNull((m) => m.id == messageId);
+      final message =
+          _messagesCache[roomId]?.firstWhereOrNull((m) => m.id == messageId);
       if (message != null) {
         pinnedMessages.add(message);
       }
 
       print("📌 تم تثبيت الرسالة بنجاح (${pinnedMessages.length} رسائل مثبتة)");
-      Get.snackbar("تم", "تم تثبيت الرسالة", snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar("تم", "تم تثبيت الرسالة",
+          snackPosition: SnackPosition.BOTTOM);
     } catch (e) {
       print("❌ فشل في تثبيت الرسالة: $e");
       Get.snackbar("خطأ", "فشل تثبيت الرسالة");
@@ -1139,21 +1229,25 @@ class ChatController extends GetxController {
 
       List<String> currentPinnedIds = [];
       if (response != null && response['pinned_message_ids'] != null) {
-        currentPinnedIds = List<String>.from(jsonDecode(response['pinned_message_ids']));
+        currentPinnedIds =
+            List<String>.from(jsonDecode(response['pinned_message_ids']));
       }
 
       // إزالة الرسالة
       currentPinnedIds.remove(messageId);
 
       await db.from('chat_rooms').update({
-        'pinned_message_ids': currentPinnedIds.isEmpty ? null : jsonEncode(currentPinnedIds),
+        'pinned_message_ids':
+            currentPinnedIds.isEmpty ? null : jsonEncode(currentPinnedIds),
       }).eq('id', roomId);
 
       // إزالة من القائمة المحلية
       pinnedMessages.removeWhere((m) => m.id == messageId);
 
-      print("📌 تم إلغاء تثبيت الرسالة (${pinnedMessages.length} رسائل متبقية)");
-      Get.snackbar("تم", "تم إلغاء تثبيت الرسالة", snackPosition: SnackPosition.BOTTOM);
+      print(
+          "📌 تم إلغاء تثبيت الرسالة (${pinnedMessages.length} رسائل متبقية)");
+      Get.snackbar("تم", "تم إلغاء تثبيت الرسالة",
+          snackPosition: SnackPosition.BOTTOM);
     } catch (e) {
       print("❌ فشل في إلغاء تثبيت الرسالة: $e");
       Get.snackbar("خطأ", "فشل إلغاء تثبيت الرسالة");
@@ -1170,7 +1264,8 @@ class ChatController extends GetxController {
       pinnedMessages.clear();
 
       print("📌 تم إلغاء تثبيت جميع الرسائل");
-      Get.snackbar("تم", "تم إلغاء تثبيت جميع الرسائل", snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar("تم", "تم إلغاء تثبيت جميع الرسائل",
+          snackPosition: SnackPosition.BOTTOM);
     } catch (e) {
       print("❌ فشل في إلغاء تثبيت الرسائل: $e");
       Get.snackbar("خطأ", "فشل إلغاء تثبيت الرسائل");
@@ -1189,15 +1284,13 @@ class ChatController extends GetxController {
           .maybeSingle();
 
       if (response != null && response['pinned_message_ids'] != null) {
-        List<String> pinnedIds = List<String>.from(jsonDecode(response['pinned_message_ids']));
+        List<String> pinnedIds =
+            List<String>.from(jsonDecode(response['pinned_message_ids']));
 
         // جلب جميع الرسائل المثبتة
         for (String id in pinnedIds) {
-          final messageResponse = await db
-              .from('chats')
-              .select()
-              .eq('id', id)
-              .maybeSingle();
+          final messageResponse =
+              await db.from('chats').select().eq('id', id).maybeSingle();
 
           if (messageResponse != null) {
             pinnedMessages.add(ChatModel.fromJson(messageResponse));
@@ -1218,7 +1311,8 @@ class ChatController extends GetxController {
   // ======================== تحويل الرسائل ========================
 
   /// تحويل رسالة إلى غرفة دردشة أخرى
-  Future<void> forwardMessage(ChatModel originalMessage, String targetUserId, UserModel targetUser) async {
+  Future<void> forwardMessage(ChatModel originalMessage, String targetUserId,
+      UserModel targetUser) async {
     isLoading.value = true;
     isSending.value = true;
 
@@ -1239,7 +1333,8 @@ class ChatController extends GetxController {
     final senderName = originalMessage.senderName ?? 'مجهول';
     String forwardedMessage = '';
     if (originalMessage.message?.isNotEmpty == true) {
-      forwardedMessage = '↪️ Forwarded from $senderName\n${originalMessage.message}';
+      forwardedMessage =
+          '↪️ Forwarded from $senderName\n${originalMessage.message}';
     } else if (originalMessage.imageUrl?.isNotEmpty == true) {
       forwardedMessage = '↪️ Forwarded from $senderName';
     } else if (originalMessage.audioUrl?.isNotEmpty == true) {
@@ -1283,7 +1378,8 @@ class ChatController extends GetxController {
       await contactController.getChatRoomList();
 
       print("✅ تم تحويل الرسالة بنجاح");
-      Get.snackbar("تم", "تم تحويل الرسالة بنجاح", snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar("تم", "تم تحويل الرسالة بنجاح",
+          snackPosition: SnackPosition.BOTTOM);
     } catch (e) {
       print("❌ خطأ في تحويل الرسالة: $e");
       Get.snackbar('خطأ', 'حدث خطأ أثناء تحويل الرسالة');

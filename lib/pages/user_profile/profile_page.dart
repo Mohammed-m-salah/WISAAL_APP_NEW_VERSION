@@ -16,13 +16,6 @@ class UserProfilePage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
         title: Text('Back'),
-        // actions: [
-        //   IconButton(
-        //       onPressed: () {
-        //         Get.toNamed('/userupdateprofilepage');
-        //       },
-        //       icon: Icon(Icons.edit))
-        // ],
       ),
       body: Column(
         children: [
