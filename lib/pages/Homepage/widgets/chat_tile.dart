@@ -1,4 +1,3 @@
-// ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -41,11 +40,10 @@ class ChatTile extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Pin/Unpin option
             ListTile(
               leading: Icon(
                 isPinned ? Icons.push_pin_outlined : Icons.push_pin,
-                color: isPinned ? Colors.grey : Colors.amber,
+                color: isPinned ? Color(0xff6DA5C0) : Color(0xff092E34),
               ),
               title: Text(isPinned ? 'unpin_message'.tr : 'pin_message'.tr),
               onTap: () {
@@ -57,7 +55,6 @@ class ChatTile extends StatelessWidget {
                 }
               },
             ),
-            // Archive option
             ListTile(
               leading: Icon(
                 isArchived ? Icons.unarchive : Icons.archive,
@@ -73,10 +70,10 @@ class ChatTile extends StatelessWidget {
                 }
               },
             ),
-            // Delete option
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
-              title: Text('delete_chat'.tr, style: const TextStyle(color: Colors.red)),
+              title: Text('delete_chat'.tr,
+                  style: const TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
                 _showDeleteConfirmation(context);
@@ -150,7 +147,10 @@ class ChatTile extends StatelessWidget {
                       errorBuilder: (context, error, stackTrace) => Container(
                         width: 60,
                         height: 60,
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.1),
                         child: Center(
                           child: Text(
                             name.isNotEmpty ? name[0].toUpperCase() : 'U',
@@ -167,7 +167,10 @@ class ChatTile extends StatelessWidget {
                         return Container(
                           width: 60,
                           height: 60,
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withOpacity(0.1),
                           child: Center(
                             child: Icon(
                               Icons.person,

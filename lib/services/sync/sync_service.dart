@@ -156,8 +156,21 @@ class SyncService extends GetxService {
       });
 
       final serverMessages = (response as List)
-          .map((data) => ChatModel.fromJson(data))
+          .map((data) {
+            // Debug: log reactions from server
+            if (data['reactions'] != null) {
+              print('📦 Server message ${data['id']} has reactions: ${data['reactions']}');
+            }
+            return ChatModel.fromJson(data);
+          })
           .toList();
+
+      // Debug: log parsed reactions
+      for (final msg in serverMessages) {
+        if (msg.reactions != null && msg.reactions!.isNotEmpty) {
+          print('📦 Parsed message ${msg.id} reactions: ${msg.reactions}');
+        }
+      }
 
       if (serverMessages.isNotEmpty) {
         // Save to local database

@@ -696,7 +696,9 @@ class ChatController extends GetxController {
   Future<void> _syncAndLoadMessages(
       String roomId, StreamController<List<ChatModel>> controller) async {
     try {
-      final messages = await _syncService.syncMessagesForRoom(roomId);
+      // Force full sync to get updated reactions
+      // استخدام sync كامل للحصول على التفاعلات المحدثة
+      final messages = await _syncService.syncMessagesForRoom(roomId, forceFullSync: true);
 
       // جلب الرسائل المعلقة من كلا المصدرين
       // 1. من جدول الرسائل المعلقة (PendingMessageModel)
@@ -1398,5 +1400,25 @@ class ChatController extends GetxController {
   Future<void> removeFailedMessage(String messageId, String roomId) async {
     await _offlineQueue.removeFromQueue(messageId);
     _messagesCache[roomId]?.removeWhere((m) => m.id == messageId);
+  }
+
+  /// تحديث reactions لرسالة معينة في الكاش
+  void updateMessageReactions(String messageId, List<String> reactions) {
+    // البحث في جميع الغرف
+    for (final roomId in _messagesCache.keys) {
+      final messages = _messagesCache[roomId];
+      if (messages != null) {
+        final index = messages.indexWhere((m) => m.id == messageId);
+        if (index != -1) {
+          // إنشاء نسخة جديدة من الرسالة مع التفاعلات المحدثة (بدلاً من التعديل في المكان)
+          // هذا يضمن أن Flutter يكتشف التغيير ويعيد بناء الـ Widget
+          messages[index] = messages[index].copyWith(reactions: List<String>.from(reactions));
+          // إعلام الـ Stream بالتحديث
+          _notifyMessageAdded(roomId);
+          print('✅ تم تحديث التفاعلات في الكاش للرسالة: $messageId (${reactions.length} تفاعلات)');
+          break;
+        }
+      }
+    }
   }
 }

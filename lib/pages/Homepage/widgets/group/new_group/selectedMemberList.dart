@@ -11,14 +11,13 @@ class SelectedMembers extends StatelessWidget {
     GroupController groupController = Get.put(GroupController());
 
     return Obx(
-      () => groupController.groupMembers.isEmpty
+      () => groupController.selectedMembers.isEmpty
           ? const SizedBox.shrink()
           : SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
               child: Row(
-                children: groupController.groupMembers.map((user) {
-                  // تحقق من وجود رابط صورة صالح
+                children: groupController.selectedMembers.map((user) {
                   final hasValidImage = user.profileimage != null &&
                       user.profileimage!.isNotEmpty;
 
@@ -46,7 +45,7 @@ class SelectedMembers extends StatelessWidget {
                           child: GestureDetector(
                             onTap: () {
                               // إزالة المستخدم من القائمة عند الضغط على الايقونة
-                              groupController.groupMembers.remove(user);
+                              groupController.selectedMembers.remove(user);
                             },
                             child: Container(
                               width: 24,

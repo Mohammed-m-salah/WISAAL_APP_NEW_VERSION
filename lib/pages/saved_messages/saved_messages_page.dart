@@ -24,7 +24,12 @@ class _SavedMessagesPageState extends State<SavedMessagesPage> {
   @override
   void initState() {
     super.initState();
-    savedController = Get.put(SavedMessagesController());
+    // استخدام Get.find أو Get.put للحصول على نفس الـ instance
+    savedController = Get.isRegistered<SavedMessagesController>()
+        ? Get.find<SavedMessagesController>()
+        : Get.put(SavedMessagesController());
+    // تحميل الرسائل المحفوظة
+    savedController.loadSavedMessages();
   }
 
   @override

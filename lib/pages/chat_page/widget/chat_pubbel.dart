@@ -118,11 +118,14 @@ class _ChatBubbelState extends State<ChatBubbel> {
     _positionSub.cancel();
     _durationSub.cancel();
     _audioPlayer.dispose();
-    _hideReactionPicker();
+    // Remove overlay safely without setState
+    _reactionOverlay?.remove();
+    _reactionOverlay = null;
     super.dispose();
   }
 
   void _showReactionPickerOverlay(BuildContext context, Offset position) {
+    if (!mounted) return;
     if (widget.onReact == null || widget.isDeleted) return;
 
     _hideReactionPicker();
@@ -145,7 +148,7 @@ class _ChatBubbelState extends State<ChatBubbel> {
     }
 
     _reactionOverlay = OverlayEntry(
-      builder: (context) => Stack(
+      builder: (overlayContext) => Stack(
         children: [
           // خلفية شفافة للإغلاق عند الضغط
           Positioned.fill(
@@ -162,7 +165,7 @@ class _ChatBubbelState extends State<ChatBubbel> {
               duration: const Duration(milliseconds: 200),
               tween: Tween(begin: 0.8, end: 1.0),
               curve: Curves.easeOut,
-              builder: (context, scale, child) {
+              builder: (animContext, scale, child) {
                 return Transform.scale(
                   scale: scale,
                   child: child,
@@ -191,8 +194,10 @@ class _ChatBubbelState extends State<ChatBubbel> {
       ),
     );
 
-    Overlay.of(context).insert(_reactionOverlay!);
-    setState(() => _showReactionPicker = true);
+    if (mounted) {
+      Overlay.of(context).insert(_reactionOverlay!);
+      setState(() => _showReactionPicker = true);
+    }
   }
 
   void _hideReactionPicker() {
@@ -260,11 +265,11 @@ class _ChatBubbelState extends State<ChatBubbel> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
+                    color: Colors.red.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.push_pin,
-                      color: Colors.orange, size: 20),
+                  child:
+                      const Icon(Icons.push_pin, color: Colors.red, size: 20),
                 ),
                 const SizedBox(width: 12),
                 const Text('Unpin',
@@ -376,23 +381,24 @@ class _ChatBubbelState extends State<ChatBubbel> {
           ),
       ],
     ).then((value) {
+      if (!mounted) return;
       if (value == 'react') {
         // Show reaction picker
         if (_tapDownDetails != null) {
           _showReactionPickerOverlay(context, _tapDownDetails!.globalPosition);
         }
       } else if (value == 'pin') {
-        widget.onPin!();
+        widget.onPin?.call();
       } else if (value == 'unpin') {
-        widget.onUnpin!();
+        widget.onUnpin?.call();
       } else if (value == 'forward') {
-        widget.onForward!();
+        widget.onForward?.call();
       } else if (value == 'save') {
-        widget.onSave!();
+        widget.onSave?.call();
       } else if (value == 'edit') {
-        widget.onEdit!();
+        widget.onEdit?.call();
       } else if (value == 'delete') {
-        widget.onDelete!();
+        widget.onDelete?.call();
       }
     });
   }
@@ -684,7 +690,6 @@ class _ChatBubbelState extends State<ChatBubbel> {
     final isMe = widget.isComming;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Deleted message
     if (widget.isDeleted) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),

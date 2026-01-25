@@ -55,19 +55,53 @@ class ReactionsController extends GetxController {
   final db = Supabase.instance.client;
   final auth = Supabase.instance.client.auth;
 
+  // Callback لإعلام ChatController بالتحديث
+  Function(String messageId, List<String> reactions)? onReactionUpdated;
+
+  // كاش محلي للتفاعلات للتحديث الفوري
+  final Map<String, List<String>> _localReactionsCache = {};
+
   Future<void> addReaction(String messageId, String emoji) async {
     final currentUser = auth.currentUser;
-    if (currentUser == null) return;
+    if (currentUser == null) {
+      print('❌ لا يوجد مستخدم مسجل');
+      return;
+    }
+
+    print('🎯 بدء إضافة تفاعل: $emoji للرسالة: $messageId');
 
     try {
+      // الخطوة 1: تحديث الكاش المحلي فوراً (UI يتحدث مباشرة)
+      List<String> localReactions = List<String>.from(_localReactionsCache[messageId] ?? []);
+      localReactions.removeWhere((r) => r.contains(':${currentUser.id}'));
+      localReactions.add('$emoji:${currentUser.id}');
+      _localReactionsCache[messageId] = localReactions;
+
+      // إعلام الـ UI بالتحديث فوراً قبل الـ API call
+      onReactionUpdated?.call(messageId, List<String>.from(localReactions));
+      print('⚡ تحديث فوري للـ UI: $emoji');
+
+      // الخطوة 2: جلب التفاعلات الحالية من قاعدة البيانات
+      print('📡 جلب الرسالة من قاعدة البيانات...');
       final response = await db
           .from('chats')
-          .select('reactions')
+          .select('id, reactions')
           .eq('id', messageId)
-          .single();
+          .maybeSingle();
+
+      print('📡 الرد من قاعدة البيانات: $response');
+
+      // إذا لم توجد الرسالة في السيرفر (pending message)
+      if (response == null) {
+        print('⚠️ الرسالة غير موجودة في السيرفر - تحديث محلي فقط');
+        return;
+      }
 
       List<String> reactions = [];
       if (response['reactions'] != null) {
+        print('📦 نوع reactions في الرد: ${response['reactions'].runtimeType}');
+        print('📦 قيمة reactions: ${response['reactions']}');
+
         if (response['reactions'] is List) {
           reactions = List<String>.from(response['reactions']);
         } else if (response['reactions'] is String) {
@@ -76,21 +110,57 @@ class ReactionsController extends GetxController {
             if (decoded is List) {
               reactions = List<String>.from(decoded);
             }
-          } catch (_) {}
+          } catch (e) {
+            print('❌ خطأ في decode: $e');
+          }
         }
       }
 
+      print('📋 التفاعلات الحالية: $reactions');
+
+      // إزالة التفاعل السابق للمستخدم
       reactions.removeWhere((r) => r.contains(':${currentUser.id}'));
 
+      // إضافة التفاعل الجديد
       reactions.add('$emoji:${currentUser.id}');
 
+      print('📋 التفاعلات الجديدة للحفظ: $reactions');
+
+      // الخطوة 3: حفظ في قاعدة البيانات
+      // تحويل إلى JSON string للتوافق مع أنواع مختلفة من الأعمدة
+      final reactionsJson = jsonEncode(reactions);
+      print('💾 جاري حفظ التفاعلات في قاعدة البيانات: $reactionsJson');
+
       await db.from('chats').update({
-        'reactions': reactions,
+        'reactions': reactionsJson,
       }).eq('id', messageId);
+
+      print('💾 تم التحديث!');
+
+      // التحقق من الحفظ
+      final verifyResponse = await db
+          .from('chats')
+          .select('reactions')
+          .eq('id', messageId)
+          .maybeSingle();
+
+      print('✅ التحقق بعد الحفظ: ${verifyResponse?['reactions']}');
+
+      // تحديث الكاش بالقيمة النهائية
+      _localReactionsCache[messageId] = reactions;
+      onReactionUpdated?.call(messageId, reactions);
 
       print('✅ تم إضافة التفاعل: $emoji على الرسالة: $messageId');
     } catch (e) {
       print('❌ خطأ في إضافة التفاعل: $e');
+      print('❌ نوع الخطأ: ${e.runtimeType}');
+      print('❌ تفاصيل: ${e.toString()}');
+
+      // إذا كان الخطأ متعلق بالعمود غير موجود
+      if (e.toString().contains('reactions') || e.toString().contains('column')) {
+        print('⚠️ تأكد من وجود عمود reactions في جدول chats في Supabase');
+        print('⚠️ قم بتنفيذ: ALTER TABLE chats ADD COLUMN IF NOT EXISTS reactions text;');
+      }
     }
   }
 
@@ -99,11 +169,27 @@ class ReactionsController extends GetxController {
     if (currentUser == null) return;
 
     try {
+      // الخطوة 1: تحديث الكاش المحلي فوراً
+      List<String> localReactions = List<String>.from(_localReactionsCache[messageId] ?? []);
+      localReactions.removeWhere((r) => r.contains(':${currentUser.id}'));
+      _localReactionsCache[messageId] = localReactions;
+
+      // إعلام الـ UI بالتحديث فوراً
+      onReactionUpdated?.call(messageId, List<String>.from(localReactions));
+      print('⚡ إزالة فورية من الـ UI');
+
+      // الخطوة 2: جلب التفاعلات من قاعدة البيانات
       final response = await db
           .from('chats')
           .select('reactions')
           .eq('id', messageId)
-          .single();
+          .maybeSingle();
+
+      // إذا لم توجد الرسالة في السيرفر
+      if (response == null) {
+        print('⚠️ الرسالة غير موجودة في السيرفر - تحديث محلي فقط');
+        return;
+      }
 
       List<String> reactions = [];
       if (response['reactions'] != null) {
@@ -121,13 +207,26 @@ class ReactionsController extends GetxController {
 
       reactions.removeWhere((r) => r.contains(':${currentUser.id}'));
 
+      // الخطوة 3: حفظ في قاعدة البيانات
+      final reactionsJson = jsonEncode(reactions);
       await db.from('chats').update({
-        'reactions': reactions,
+        'reactions': reactionsJson,
       }).eq('id', messageId);
+
+      // تحديث الكاش بالقيمة النهائية
+      _localReactionsCache[messageId] = reactions;
+      onReactionUpdated?.call(messageId, reactions);
 
       print('✅ تم إزالة التفاعل من الرسالة: $messageId');
     } catch (e) {
       print('❌ خطأ في إزالة التفاعل: $e');
+    }
+  }
+
+  /// تحديث الكاش المحلي من الرسائل الموجودة
+  void updateLocalCache(String messageId, List<String>? reactions) {
+    if (reactions != null) {
+      _localReactionsCache[messageId] = List<String>.from(reactions);
     }
   }
 

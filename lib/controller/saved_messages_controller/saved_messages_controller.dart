@@ -1,8 +1,10 @@
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import 'package:wissal_app/model/chat_model.dart';
 
 class SavedMessagesController extends GetxController {
+  final uuid = const Uuid();
   final db = Supabase.instance.client;
   final auth = Supabase.instance.client.auth;
 
@@ -84,20 +86,20 @@ class SavedMessagesController extends GetxController {
     try {
       final userId = currentUser.id;
       final userName = currentUser.userMetadata?['name'] ?? 'User';
+      final savedRoomId = '${userId}_${userId}';
+      final messageId = uuid.v4();
 
+      // استخدام نفس الحقول المستخدمة في chat_controller.dart
       final newMessage = {
-        'message': message ?? '',
+        'id': messageId,
         'senderId': userId,
-        'reciverId': userId, // نفس المستخدم
+        'reciverId': userId,
         'senderName': userName,
+        'message': message ?? '',
+        'imageUrl': imageUrl ?? '',
+        'audioUrl': audioUrl ?? '',
         'timeStamp': DateTime.now().toIso8601String(),
-        'readStatus': 'Read',
-        'imageUrl': imageUrl,
-        'audioUrl': audioUrl,
-        'documentUrl': documentUrl,
-        'isDeleted': false,
-        'isEdited': false,
-        'isForwarded': false,
+        'roomId': savedRoomId,
       };
 
       await db.from('chats').insert(newMessage);
@@ -110,40 +112,47 @@ class SavedMessagesController extends GetxController {
 
   Future<void> saveMessageFromChat(ChatModel originalMessage) async {
     final currentUser = auth.currentUser;
-    if (currentUser == null) return;
+    if (currentUser == null) {
+      print('❌ المستخدم غير مسجل');
+      Get.snackbar('خطأ', 'يجب تسجيل الدخول أولاً', snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
 
     try {
       final userId = currentUser.id;
       final userName = currentUser.userMetadata?['name'] ?? 'User';
+      final messageId = uuid.v4(); // استخدام v4 للتوافق
 
       String savedMessageText = originalMessage.message ?? '';
 
+      // إضافة معلومات المرسل الأصلي
       if (originalMessage.senderId != userId) {
-        savedMessageText =
-            '📌 من: ${originalMessage.senderName}\n$savedMessageText';
+        savedMessageText = '📌 من: ${originalMessage.senderName}\n$savedMessageText';
       }
 
+      // إنشاء roomId للرسائل المحفوظة (المستخدم يرسل لنفسه)
+      final savedRoomId = '${userId}_${userId}';
+
+      // استخدام نفس الحقول المستخدمة في chat_controller.dart
       final savedMessage = {
-        'message': savedMessageText,
+        'id': messageId,
         'senderId': userId,
         'reciverId': userId,
         'senderName': userName,
+        'message': savedMessageText,
+        'imageUrl': originalMessage.imageUrl ?? '',
+        'audioUrl': originalMessage.audioUrl ?? '',
         'timeStamp': DateTime.now().toIso8601String(),
-        'readStatus': 'Read',
-        'imageUrl': originalMessage.imageUrl,
-        'audioUrl': originalMessage.audioUrl,
-        'documentUrl': originalMessage.documentUrl,
-        'isDeleted': false,
-        'isEdited': false,
-        'isForwarded': true,
-        'forwardedFrom': originalMessage.senderName,
+        'roomId': savedRoomId,
       };
+
+      print('📝 حفظ الرسالة: $savedMessage');
 
       await db.from('chats').insert(savedMessage);
 
       Get.snackbar(
-        'success'.tr,
-        'message_saved'.tr,
+        'تم',
+        'تم حفظ الرسالة',
         snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 2),
       );
@@ -151,9 +160,10 @@ class SavedMessagesController extends GetxController {
       print('✅ تم حفظ الرسالة من المحادثة');
     } catch (e) {
       print('❌ خطأ في حفظ الرسالة من المحادثة: $e');
+
       Get.snackbar(
-        'error'.tr,
-        'something_went_wrong'.tr,
+        'خطأ',
+        'فشل حفظ الرسالة',
         snackPosition: SnackPosition.BOTTOM,
       );
     }

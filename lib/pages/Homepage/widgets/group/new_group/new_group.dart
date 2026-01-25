@@ -25,7 +25,7 @@ class NewGroup extends StatelessWidget {
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
       ),
       floatingActionButton: Obx(() {
-        final isEnabled = groupController.groupMembers.isNotEmpty;
+        final isEnabled = groupController.selectedMembers.isNotEmpty;
 
         return FloatingActionButton(
           backgroundColor: isEnabled

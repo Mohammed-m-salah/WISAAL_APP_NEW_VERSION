@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wissal_app/controller/contact_controller/contact_controller.dart';
 import 'package:wissal_app/controller/profile_controller/profile_controller.dart';
 import 'package:wissal_app/model/user_model.dart';
-import 'package:wissal_app/pages/Homepage/widgets/group/new_group/new_group.dart';
+import 'package:wissal_app/pages/group/create_group_page.dart';
 import 'package:wissal_app/pages/chat_page/chat_page.dart';
 import 'package:wissal_app/widgets/skeleton_loading.dart';
 import 'package:wissal_app/utils/responsive.dart';
@@ -111,7 +111,7 @@ class _ContactPageState extends State<ContactPage> {
                       title: 'new_group'.tr,
                       subtitle: 'create_new_group'.tr,
                       color: Colors.teal,
-                      onTap: () => Get.to(() => NewGroup()),
+                      onTap: () => Get.to(() => const CreateGroupPage()),
                     ),
                   ],
                 ),

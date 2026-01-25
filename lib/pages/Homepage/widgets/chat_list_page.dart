@@ -21,7 +21,8 @@ class ChatListPage extends StatefulWidget {
 
 class _ChatListPageState extends State<ChatListPage> {
   final ContactController contactController = Get.put(ContactController());
-  final SavedMessagesController savedController = Get.put(SavedMessagesController());
+  final SavedMessagesController savedController =
+      Get.put(SavedMessagesController());
 
   String formatTimestamp(DateTime? timestamp) {
     if (timestamp == null) return '12:00';
@@ -74,12 +75,11 @@ class _ChatListPageState extends State<ChatListPage> {
     return RefreshIndicator(
       onRefresh: () => contactController.getChatRoomList(),
       child: Obx(() {
-        // Show skeleton during loading or before initial load completes
-        if (contactController.isLoading.value || !contactController.hasLoadedInitially.value) {
+        if (contactController.isLoading.value ||
+            !contactController.hasLoadedInitially.value) {
           return const ChatListSkeleton();
         }
 
-        // Only show "no messages" after initial load is complete
         if (contactController.chatRoomList.isEmpty) {
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -118,22 +118,19 @@ class _ChatListPageState extends State<ChatListPage> {
           );
         }
 
-        // فصل الغرف المثبتة وغير المثبتة
-        final pinnedRooms = contactController.chatRoomList
-            .where((r) => r.isPinned)
-            .toList();
-        final unpinnedRooms = contactController.chatRoomList
-            .where((r) => !r.isPinned)
-            .toList();
+        final pinnedRooms =
+            contactController.chatRoomList.where((r) => r.isPinned).toList();
+        final unpinnedRooms =
+            contactController.chatRoomList.where((r) => !r.isPinned).toList();
 
         return CustomScrollView(
           slivers: [
-            // قسم الرسائل المحفوظة
             SliverToBoxAdapter(
               child: InkWell(
                 onTap: () => Get.to(() => const SavedMessagesPage()),
                 child: Container(
-                  padding: Responsive.symmetricPadding(horizontal: 16, vertical: 12),
+                  padding:
+                      Responsive.symmetricPadding(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.blue.withOpacity(0.05),
                     border: Border(
@@ -190,7 +187,8 @@ class _ChatListPageState extends State<ChatListPage> {
                       Obx(() {
                         if (savedController.savedMessagesCount > 0) {
                           return Container(
-                            padding: Responsive.symmetricPadding(horizontal: 8, vertical: 4),
+                            padding: Responsive.symmetricPadding(
+                                horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.blue,
                               borderRadius: Responsive.borderRadius(12),
@@ -212,23 +210,28 @@ class _ChatListPageState extends State<ChatListPage> {
                 ),
               ),
             ),
-
-            // قسم المحادثات المؤرشفة (زر للانتقال)
             if (contactController.archivedChatRoomList.isNotEmpty)
               SliverToBoxAdapter(
                 child: InkWell(
                   onTap: () => Get.to(() => const ArchivedChatsPage()),
                   child: Container(
-                    padding: Responsive.symmetricPadding(horizontal: 16, vertical: 12),
+                    padding: Responsive.symmetricPadding(
+                        horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceVariant
+                          .withOpacity(0.5),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: Responsive.padding(all: 8),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withOpacity(0.1),
                             borderRadius: Responsive.borderRadius(10),
                           ),
                           child: Icon(
@@ -248,7 +251,8 @@ class _ChatListPageState extends State<ChatListPage> {
                           ),
                         ),
                         Container(
-                          padding: Responsive.symmetricPadding(horizontal: 8, vertical: 4),
+                          padding: Responsive.symmetricPadding(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.primary,
                             borderRadius: Responsive.borderRadius(12),
@@ -272,21 +276,21 @@ class _ChatListPageState extends State<ChatListPage> {
                   ),
                 ),
               ),
-            // قسم الغرف المثبتة (قابل لإعادة الترتيب)
             if (pinnedRooms.isNotEmpty) ...[
               SliverToBoxAdapter(
                 child: Padding(
                   padding: Responsive.padding(left: 16, right: 16, top: 8),
                   child: Row(
                     children: [
-                      Icon(Icons.push_pin, size: Responsive.iconSize(18), color: Colors.amber.shade600),
+                      Icon(Icons.push_pin,
+                          size: Responsive.iconSize(18),
+                          color: Color(0xff092E34)),
                       Responsive.horizontalSpace(8),
                       Text(
                         '${'pinned_chats'.tr} (${pinnedRooms.length})',
                         style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.amber.shade700,
-                        ),
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xff092E34)),
                       ),
                       const Spacer(),
                       Text(
@@ -314,16 +318,15 @@ class _ChatListPageState extends State<ChatListPage> {
                   );
                 },
               ),
-              // خط فاصل
               if (unpinnedRooms.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: Responsive.symmetricPadding(horizontal: 16, vertical: 8),
+                    padding: Responsive.symmetricPadding(
+                        horizontal: 16, vertical: 8),
                     child: Divider(color: Colors.grey.shade300),
                   ),
                 ),
             ],
-            // قسم الغرف غير المثبتة
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {

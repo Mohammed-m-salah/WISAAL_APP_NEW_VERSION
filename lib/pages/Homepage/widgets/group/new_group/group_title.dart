@@ -63,7 +63,7 @@ class _GroupTitleState extends State<GroupTitle> {
               return;
             }
 
-            if (groupController.groupMembers.isEmpty) {
+            if (groupController.selectedMembers.isEmpty) {
               Get.snackbar(
                 "Error",
                 "Please select at least one member for the group",
@@ -140,7 +140,7 @@ class _GroupTitleState extends State<GroupTitle> {
                     prefixIcon: const Icon(Icons.group),
                     hintText: 'Group Name',
                     filled: true,
-                    fillColor: Theme.of(context).colorScheme.background,
+                    fillColor: Theme.of(context).colorScheme.surface,
                     contentPadding: const EdgeInsets.all(16),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -154,9 +154,9 @@ class _GroupTitleState extends State<GroupTitle> {
           Expanded(
             child: Obx(
               () => ListView.builder(
-                itemCount: groupController.groupMembers.length,
+                itemCount: groupController.selectedMembers.length,
                 itemBuilder: (context, index) {
-                  final member = groupController.groupMembers[index];
+                  final member = groupController.selectedMembers[index];
                   return ChatTile(
                     imgUrl: member.profileimage ??
                         'https://i.ibb.co/V04vrTtV/blank-profile-picture-973460-1280.png',

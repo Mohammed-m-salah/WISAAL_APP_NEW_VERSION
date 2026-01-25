@@ -21,6 +21,9 @@ import 'package:wissal_app/config/colors.dart';
 import 'package:wissal_app/widgets/connectivity_banner.dart';
 import 'package:wissal_app/model/message_sync_status.dart';
 import 'package:wissal_app/utils/responsive.dart';
+import 'package:wissal_app/widgets/skeleton_loading.dart';
+import 'package:wissal_app/widgets/voice_recorder_widget.dart';
+import 'dart:async';
 
 class ChatPage extends StatefulWidget {
   final UserModel userModel;
@@ -51,6 +54,14 @@ class _ChatPageState extends State<ChatPage>
   List<int> searchMatchIndices = [];
   List<ChatModel> allMessages = [];
 
+  // متغيرات التسجيل الصوتي
+  bool _isVoiceLocked = false;
+  String? _recordedAudioPath;
+  Duration _recordingDuration = Duration.zero;
+  Timer? _recordingTimer;
+  DateTime? _recordingStartTime;
+  double _voiceDragOffset = 0;
+
   @override
   void initState() {
     super.initState();
@@ -61,8 +72,19 @@ class _ChatPageState extends State<ChatPage>
     profileController = Get.put(ProfileController());
     imagePickerController = Get.put(ImagePickerController());
     contactController = Get.put(ContactController());
-    savedMessagesController = Get.put(SavedMessagesController());
-    reactionsController = Get.put(ReactionsController());
+    savedMessagesController = Get.isRegistered<SavedMessagesController>()
+        ? Get.find<SavedMessagesController>()
+        : Get.put(SavedMessagesController());
+    reactionsController = Get.isRegistered<ReactionsController>()
+        ? Get.find<ReactionsController>()
+        : Get.put(ReactionsController());
+
+    // ربط ReactionsController مع ChatController لتحديث الـ UI فوراً
+    reactionsController.onReactionUpdated = (messageId, reactions) {
+      if (mounted) {
+        chatcontroller.updateMessageReactions(messageId, reactions);
+      }
+    };
 
     _typingAnimationController = AnimationController(
       vsync: this,
@@ -88,7 +110,6 @@ class _ChatPageState extends State<ChatPage>
         chatcontroller.listenToTypingStatus(widget.userModel.id!);
         chatcontroller.loadPinnedMessages(roomId);
 
-        // تحديث حالة الرسائل إلى "مقروءة" عند فتح المحادثة
         chatcontroller.markMessagesAsRead(widget.userModel.id!);
       } else {
         print("⚠️ لم يتمكن من إنشاء Room ID");
@@ -106,6 +127,7 @@ class _ChatPageState extends State<ChatPage>
     chatcontroller.stopListeningToTypingStatus(widget.userModel.id!);
     chatcontroller.clearTypingStatus(widget.userModel.id!);
     _typingAnimationController.dispose();
+    _recordingTimer?.cancel();
     messageController.dispose();
     searchController.dispose();
     scrollController.dispose();
@@ -714,7 +736,7 @@ class _ChatPageState extends State<ChatPage>
                   stream: chatcontroller.getMessages(userModel.id!),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const MessagesSkeleton();
                     }
                     if (snapshot.hasError) {
                       return const Center(
@@ -829,6 +851,9 @@ class _ChatPageState extends State<ChatPage>
                                       .contains(searchQuery.toLowerCase());
 
                               return ChatBubbel(
+                                // Key يتضمن الـ reactions لضمان إعادة البناء عند تغيير التفاعلات
+                                key: ValueKey(
+                                    '${message.id}_${message.reactions?.join('') ?? ''}_${message.isDeleted}_${message.isEdited}'),
                                 senderName: message.senderName ?? '',
                                 audioUrl: message.audioUrl ?? "",
                                 isHighlighted: isCurrentSearchMatch,
@@ -895,19 +920,27 @@ class _ChatPageState extends State<ChatPage>
                                     : null,
                                 onSave: !(message.isDeleted ?? false)
                                     ? () {
-                                        savedMessagesController.saveMessageFromChat(message);
+                                        savedMessagesController
+                                            .saveMessageFromChat(message);
                                       }
                                     : null,
                                 reactions: message.reactions,
-                                currentUserId: Supabase.instance.client.auth.currentUser?.id,
+                                currentUserId: Supabase
+                                    .instance.client.auth.currentUser?.id,
                                 onReact: !(message.isDeleted ?? false)
                                     ? (emoji) {
+                                        // تحديث الكاش المحلي بالتفاعلات الحالية
+                                        reactionsController.updateLocalCache(
+                                            message.id!, message.reactions);
+
                                         if (emoji.isEmpty) {
                                           // إزالة التفاعل
-                                          reactionsController.removeReaction(message.id!);
+                                          reactionsController
+                                              .removeReaction(message.id!);
                                         } else {
                                           // إضافة تفاعل
-                                          reactionsController.addReaction(message.id!, emoji);
+                                          reactionsController.addReaction(
+                                              message.id!, emoji);
                                         }
                                       }
                                     : null,
@@ -1352,229 +1385,359 @@ class _ChatPageState extends State<ChatPage>
             ),
           ),
 
-          Container(
-            padding: Responsive.symmetricPadding(horizontal: 8, vertical: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Obx(() {
-                    final isRecording = chatcontroller.isRecording.value;
-                    return GestureDetector(
-                      onLongPressStart: (_) async {
-                        if (!isRecording) {
-                          await chatcontroller.start_record();
+          // إخفاء شريط الإدخال عند التسجيل أو القفل
+          Obx(() {
+            final isRecording = chatcontroller.isRecording.value;
+            if (isRecording || _isVoiceLocked) {
+              return const SizedBox.shrink();
+            }
+            return Container(
+              padding: Responsive.symmetricPadding(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // زر التسجيل مع السحب
+                    VoiceRecordButton(
+                      isRecording: isRecording,
+                      onStartRecording: () async {
+                        _recordingStartTime = DateTime.now();
+                        _recordingTimer = Timer.periodic(
+                          const Duration(seconds: 1),
+                          (timer) {
+                            if (mounted) {
+                              setState(() {
+                                _recordingDuration = DateTime.now()
+                                    .difference(_recordingStartTime!);
+                              });
+                            }
+                          },
+                        );
+                        await chatcontroller.start_record();
+                      },
+                      onStopRecording: (cancelled) async {
+                        _recordingTimer?.cancel();
+                        final path = await chatcontroller.stop_record();
+
+                        if (cancelled) {
+                          // تم الإلغاء - حذف الملف
+                          if (path != null) {
+                            try {
+                              File(path).deleteSync();
+                            } catch (_) {}
+                          }
+                          setState(() {
+                            _recordingDuration = Duration.zero;
+                            _voiceDragOffset = 0;
+                          });
+                        } else {
+                          // إرسال مباشر
+                          if (path != null && path.isNotEmpty) {
+                            chatcontroller.selectedAudioPath.value = path;
+                            await chatcontroller.sendVoiceMessage(
+                              widget.userModel.id!,
+                              widget.userModel,
+                            );
+                          }
+                          setState(() {
+                            _recordingDuration = Duration.zero;
+                            _voiceDragOffset = 0;
+                          });
                         }
                       },
-                      onLongPressEnd: (_) async {
-                        if (chatcontroller.isRecording.value) {
-                          await chatcontroller.stop_record();
-                          await chatcontroller.sendVoiceMessage(
-                            widget.userModel.id!,
-                            widget.userModel,
-                          );
-                        }
+                      onLockRecording: () {
+                        setState(() => _isVoiceLocked = true);
+                      },
+                      onDragUpdate: (offset) {
+                        setState(() => _voiceDragOffset = offset);
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         width: Responsive.containerSize(48),
                         height: Responsive.containerSize(48),
                         decoration: BoxDecoration(
-                          color: isRecording
-                              ? Colors.red
-                              : Theme.of(context).colorScheme.primary,
+                          color: Theme.of(context).colorScheme.primary,
                           shape: BoxShape.circle,
-                          boxShadow: isRecording
-                              ? [
-                                  BoxShadow(
-                                    color: Colors.red.withOpacity(0.4),
-                                    blurRadius: 12,
-                                    spreadRadius: 2,
-                                  ),
-                                ]
-                              : null,
                         ),
                         child: Icon(
-                          isRecording ? Icons.mic : Icons.mic_none,
+                          Icons.mic_none,
                           color: Colors.white,
                           size: Responsive.iconSize(24),
                         ),
                       ),
-                    );
-                  }),
-                  Responsive.horizontalSpace(8),
-                  Expanded(
-                    child: Container(
-                      constraints: BoxConstraints(maxHeight: Responsive.h(120)),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        borderRadius: Responsive.borderRadius(24),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Obx(
-                            () => chatcontroller.selectedImagePaths.isEmpty
-                                ? IconButton(
-                                    onPressed: _showAttachmentOptions,
-                                    icon: const Icon(
-                                      Icons.attach_file,
-                                      color: Colors.white70,
-                                    ),
-                                  )
-                                : Stack(
-                                    children: [
-                                      IconButton(
-                                        onPressed: () {
-                                          chatcontroller.selectedImagePaths
-                                              .clear();
-                                        },
-                                        icon: const Icon(
-                                          Icons.photo_library,
-                                          color: Colors.amber,
-                                        ),
+                    ),
+                    Responsive.horizontalSpace(8),
+                    Expanded(
+                      child: Container(
+                        constraints:
+                            BoxConstraints(maxHeight: Responsive.h(120)),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          borderRadius: Responsive.borderRadius(24),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Obx(
+                              () => chatcontroller.selectedImagePaths.isEmpty
+                                  ? IconButton(
+                                      onPressed: _showAttachmentOptions,
+                                      icon: const Icon(
+                                        Icons.attach_file,
+                                        color: Colors.white70,
                                       ),
-                                      Positioned(
-                                        right: 6,
-                                        top: 6,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: const BoxDecoration(
-                                            color: Colors.red,
-                                            shape: BoxShape.circle,
+                                    )
+                                  : Stack(
+                                      children: [
+                                        IconButton(
+                                          onPressed: () {
+                                            chatcontroller.selectedImagePaths
+                                                .clear();
+                                          },
+                                          icon: const Icon(
+                                            Icons.photo_library,
+                                            color: Colors.amber,
                                           ),
-                                          child: Text(
-                                            '${chatcontroller.selectedImagePaths.length}',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
+                                        ),
+                                        Positioned(
+                                          right: 6,
+                                          top: 6,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: const BoxDecoration(
+                                              color: Colors.red,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Text(
+                                              '${chatcontroller.selectedImagePaths.length}',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                          ),
+                                      ],
+                                    ),
+                            ),
 
-                          // Text field
-                          Expanded(
-                            child: TextField(
-                              controller: messageController,
-                              maxLines: 5,
-                              minLines: 1,
-                              style: TextStyle(
-                                  color:
-                                      Theme.of(context).colorScheme.onPrimary),
-                              decoration: InputDecoration(
-                                hintText: 'type_message'.tr,
-                                hintStyle: TextStyle(
+                            // Text field
+                            Expanded(
+                              child: TextField(
+                                controller: messageController,
+                                maxLines: 5,
+                                minLines: 1,
+                                style: TextStyle(
                                     color: Theme.of(context)
                                         .colorScheme
-                                        .onPrimary
-                                        .withOpacity(0.6)),
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                  horizontal: 8,
+                                        .onSurface),
+                                decoration: InputDecoration(
+                                  hintText: 'type_message'.tr,
+                                  hintStyle: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onPrimary
+                                          .withOpacity(0.6)),
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 8,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Responsive.horizontalSpace(8),
-                  Obx(() {
-                    final canSend = chatcontroller.isTyping.value ||
-                        chatcontroller.selectedImagePaths.isNotEmpty;
-                    final isSending = chatcontroller.isSending.value;
-
-                    return GestureDetector(
-                      onTap: isSending
-                          ? null
-                          : () {
-                              if (messageController.text.trim().isNotEmpty ||
-                                  chatcontroller
-                                      .selectedImagePaths.isNotEmpty) {
-                                chatcontroller.sendMessage(
-                                  widget.userModel.id!,
-                                  messageController.text.trim(),
-                                  widget.userModel,
-                                );
-                                messageController.clear();
-                                chatcontroller.isTyping.value = false;
-                              }
-                            },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: Responsive.containerSize(48),
-                        height: Responsive.containerSize(48),
-                        decoration: BoxDecoration(
-                          color: canSend
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.grey.shade600,
-                          shape: BoxShape.circle,
+                          ],
                         ),
-                        child: isSending
-                            ? Padding(
-                                padding: Responsive.padding(all: 12),
-                                child: const CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Icon(
-                                Icons.send,
-                                color: Colors.white,
-                                size: Responsive.iconSize(22),
-                              ),
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
-
-          // مؤشر التسجيل
-          Obx(() {
-            if (chatcontroller.isRecording.value) {
-              return Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                color: Colors.red.withOpacity(0.1),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.fiber_manual_record,
-                        color: Colors.red, size: 12),
-                    SizedBox(width: 8),
-                    Text(
-                      'Registering in progress... Leave to submit',
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w500,
                       ),
                     ),
+                    Responsive.horizontalSpace(8),
+                    Obx(() {
+                      final canSend = chatcontroller.isTyping.value ||
+                          chatcontroller.selectedImagePaths.isNotEmpty;
+                      final isSending = chatcontroller.isSending.value;
+
+                      return GestureDetector(
+                        onTap: isSending
+                            ? null
+                            : () {
+                                if (messageController.text.trim().isNotEmpty ||
+                                    chatcontroller
+                                        .selectedImagePaths.isNotEmpty) {
+                                  chatcontroller.sendMessage(
+                                    widget.userModel.id!,
+                                    messageController.text.trim(),
+                                    widget.userModel,
+                                  );
+                                  messageController.clear();
+                                  chatcontroller.isTyping.value = false;
+                                }
+                              },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: Responsive.containerSize(48),
+                          height: Responsive.containerSize(48),
+                          decoration: BoxDecoration(
+                            color: canSend
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.grey.shade600,
+                            shape: BoxShape.circle,
+                          ),
+                          child: isSending
+                              ? Padding(
+                                  padding: Responsive.padding(all: 12),
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.send,
+                                  color: Colors.white,
+                                  size: Responsive.iconSize(22),
+                                ),
+                        ),
+                      );
+                    }),
                   ],
+                ),
+              ),
+            );
+          }),
+
+          // واجهة التسجيل مع السحب للإلغاء
+          Obx(() {
+            if (chatcontroller.isRecording.value && !_isVoiceLocked) {
+              return Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: VoiceRecorderOverlay(
+                  isRecording: true,
+                  duration: _recordingDuration,
+                  dragOffset: _voiceDragOffset,
+                  isLocked: false,
+                  onCancel: () async {
+                    _recordingTimer?.cancel();
+                    final path = await chatcontroller.stop_record();
+                    if (path != null) {
+                      try {
+                        File(path).deleteSync();
+                      } catch (_) {}
+                    }
+                    setState(() {
+                      _recordingDuration = Duration.zero;
+                      _voiceDragOffset = 0;
+                    });
+                  },
+                  onLock: () {
+                    setState(() => _isVoiceLocked = true);
+                  },
+                  onSend: () {},
+                  onDragUpdate: (offset) {
+                    setState(() => _voiceDragOffset = offset);
+                  },
                 ),
               );
             }
             return const SizedBox.shrink();
           }),
+
+          // واجهة التسجيل المقفل (يمكن الاستماع والإرسال)
+          if (_isVoiceLocked)
+            Obx(() {
+              if (chatcontroller.isRecording.value) {
+                return Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: VoiceRecorderOverlay(
+                    isRecording: true,
+                    duration: _recordingDuration,
+                    dragOffset: 0,
+                    isLocked: true,
+                    onCancel: () async {
+                      _recordingTimer?.cancel();
+                      final path = await chatcontroller.stop_record();
+                      if (path != null) {
+                        try {
+                          File(path).deleteSync();
+                        } catch (_) {}
+                      }
+                      setState(() {
+                        _isVoiceLocked = false;
+                        _recordingDuration = Duration.zero;
+                      });
+                    },
+                    onLock: () {},
+                    onSend: () async {
+                      _recordingTimer?.cancel();
+                      final path = await chatcontroller.stop_record();
+                      if (path != null && path.isNotEmpty) {
+                        chatcontroller.selectedAudioPath.value = path;
+                        await chatcontroller.sendVoiceMessage(
+                          widget.userModel.id!,
+                          widget.userModel,
+                        );
+                      }
+                      setState(() {
+                        _isVoiceLocked = false;
+                        _recordingDuration = Duration.zero;
+                      });
+                    },
+                    onDragUpdate: (_) {},
+                  ),
+                );
+              }
+              // عرض معاينة بعد إيقاف التسجيل المقفل
+              if (_recordedAudioPath != null) {
+                return Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: QuickVoicePreview(
+                    audioPath: _recordedAudioPath!,
+                    duration: _recordingDuration,
+                    onSend: () async {
+                      chatcontroller.selectedAudioPath.value =
+                          _recordedAudioPath!;
+                      await chatcontroller.sendVoiceMessage(
+                        widget.userModel.id!,
+                        widget.userModel,
+                      );
+                      setState(() {
+                        _isVoiceLocked = false;
+                        _recordedAudioPath = null;
+                        _recordingDuration = Duration.zero;
+                      });
+                    },
+                    onCancel: () {
+                      if (_recordedAudioPath != null) {
+                        try {
+                          File(_recordedAudioPath!).deleteSync();
+                        } catch (_) {}
+                      }
+                      setState(() {
+                        _isVoiceLocked = false;
+                        _recordedAudioPath = null;
+                        _recordingDuration = Duration.zero;
+                      });
+                    },
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            }),
         ],
       ),
     );
