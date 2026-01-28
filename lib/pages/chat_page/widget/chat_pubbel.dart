@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:wissal_app/config/colors.dart';
 import 'package:wissal_app/model/message_sync_status.dart';
 import 'package:wissal_app/widgets/message_status_indicator.dart';
 import 'package:wissal_app/widgets/reaction_picker.dart';
+import 'package:wissal_app/widgets/glass_snackbar.dart';
 import 'package:wissal_app/controller/reactions_controller/reactions_controller.dart';
 
 class ChatBubbel extends StatefulWidget {
@@ -37,6 +39,9 @@ class ChatBubbel extends StatefulWidget {
   final List<String>? reactions;
   final Function(String emoji)? onReact;
   final String? currentUserId;
+  final String? deletedBy;
+  final String? deletedByName;
+  final String? searchQuery;
 
   const ChatBubbel({
     super.key,
@@ -68,6 +73,9 @@ class ChatBubbel extends StatefulWidget {
     this.reactions,
     this.onReact,
     this.currentUserId,
+    this.deletedBy,
+    this.deletedByName,
+    this.searchQuery,
   });
 
   @override
@@ -338,6 +346,27 @@ class _ChatBubbelState extends State<ChatBubbel> {
               ],
             ),
           ),
+        // Copy option
+        if (widget.message.trim().isNotEmpty)
+          PopupMenuItem<String>(
+            value: 'copy',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.copy_rounded,
+                      color: Colors.teal, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Copy',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
         if (widget.onEdit != null && widget.message.trim().isNotEmpty)
           PopupMenuItem<String>(
             value: 'edit',
@@ -387,6 +416,9 @@ class _ChatBubbelState extends State<ChatBubbel> {
         if (_tapDownDetails != null) {
           _showReactionPickerOverlay(context, _tapDownDetails!.globalPosition);
         }
+      } else if (value == 'copy') {
+        Clipboard.setData(ClipboardData(text: widget.message));
+        GlassSnackbar.copied();
       } else if (value == 'pin') {
         widget.onPin?.call();
       } else if (value == 'unpin') {
@@ -405,19 +437,30 @@ class _ChatBubbelState extends State<ChatBubbel> {
 
   List<String> _getImageUrls() {
     if (widget.imageUrls != null && widget.imageUrls!.isNotEmpty) {
-      return widget.imageUrls!;
+      return widget.imageUrls!
+          .where((url) => url.isNotEmpty && _isValidImageUrl(url))
+          .toList();
     }
     if (widget.imgUrl.trim().isEmpty) return [];
+    if (!_isValidImageUrl(widget.imgUrl)) return [];
     if (widget.imgUrl.trim().startsWith('[')) {
       try {
         final decoded = jsonDecode(widget.imgUrl);
         if (decoded is List) {
-          return List<String>.from(
-              decoded.where((e) => e != null && e.toString().isNotEmpty));
+          return List<String>.from(decoded.where((e) =>
+              e != null &&
+              e.toString().isNotEmpty &&
+              _isValidImageUrl(e.toString())));
         }
       } catch (_) {}
     }
     return [widget.imgUrl];
+  }
+
+  bool _isValidImageUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return false;
+    final trimmed = url.trim().toLowerCase();
+    return trimmed.startsWith('http://') || trimmed.startsWith('https://');
   }
 
   void _showFullScreenImage(BuildContext context, String imageUrl) {
@@ -683,6 +726,68 @@ class _ChatBubbelState extends State<ChatBubbel> {
     );
   }
 
+  Widget _buildMessageText(Color textColor) {
+    final query = widget.searchQuery;
+    final message = widget.message;
+
+    // If no search query or not a match, return simple text
+    if (query == null || query.isEmpty || !widget.isSearchMatch) {
+      return Text(
+        message,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 15,
+          height: 1.4,
+        ),
+      );
+    }
+
+    // Build highlighted text
+    final lowerText = message.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    final spans = <TextSpan>[];
+
+    int start = 0;
+    int index = lowerText.indexOf(lowerQuery);
+
+    while (index != -1) {
+      // Add text before match
+      if (index > start) {
+        spans.add(TextSpan(
+          text: message.substring(start, index),
+          style: TextStyle(color: textColor, fontSize: 15, height: 1.4),
+        ));
+      }
+
+      // Add highlighted match
+      spans.add(TextSpan(
+        text: message.substring(index, index + query.length),
+        style: TextStyle(
+          backgroundColor: Colors.yellow.withOpacity(0.8),
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
+          fontSize: 15,
+          height: 1.4,
+        ),
+      ));
+
+      start = index + query.length;
+      index = lowerText.indexOf(lowerQuery, start);
+    }
+
+    // Add remaining text
+    if (start < message.length) {
+      spans.add(TextSpan(
+        text: message.substring(start),
+        style: TextStyle(color: textColor, fontSize: 15, height: 1.4),
+      ));
+    }
+
+    return RichText(
+      text: TextSpan(children: spans),
+    );
+  }
+
   TapDownDetails? _tapDownDetails;
 
   @override
@@ -691,6 +796,12 @@ class _ChatBubbelState extends State<ChatBubbel> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (widget.isDeleted) {
+      // Check if deleted by admin
+      final deletedByAdmin = widget.deletedBy != null && widget.deletedBy!.isNotEmpty;
+      final deleteMessage = deletedByAdmin
+          ? 'تم الحذف من قبل المشرف ${widget.deletedByName ?? ''}'
+          : 'تم حذف هذه الرسالة';
+
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
         child: Column(
@@ -700,10 +811,12 @@ class _ChatBubbelState extends State<ChatBubbel> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .primaryContainer
-                    .withOpacity(0.5),
+                color: deletedByAdmin
+                    ? Colors.red.withOpacity(0.1)
+                    : Theme.of(context)
+                        .colorScheme
+                        .primaryContainer
+                        .withOpacity(0.5),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(18),
                   topRight: const Radius.circular(18),
@@ -711,29 +824,38 @@ class _ChatBubbelState extends State<ChatBubbel> {
                   bottomRight: Radius.circular(isMe ? 4 : 18),
                 ),
                 border: Border.all(
-                    color: Theme.of(context).dividerColor, width: 0.5),
+                    color: deletedByAdmin
+                        ? Colors.red.withOpacity(0.3)
+                        : Theme.of(context).dividerColor,
+                    width: 0.5),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.block,
+                    deletedByAdmin ? Icons.admin_panel_settings : Icons.block,
                     size: 16,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withOpacity(0.5),
+                    color: deletedByAdmin
+                        ? Colors.red.withOpacity(0.7)
+                        : Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.5),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'This message was deleted',
-                    style: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.5),
-                      fontStyle: FontStyle.italic,
-                      fontSize: 14,
+                  Flexible(
+                    child: Text(
+                      deleteMessage,
+                      style: TextStyle(
+                        color: deletedByAdmin
+                            ? Colors.red.withOpacity(0.7)
+                            : Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.5),
+                        fontStyle: FontStyle.italic,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                 ],
@@ -1034,14 +1156,7 @@ class _ChatBubbelState extends State<ChatBubbel> {
                               top: hasImage || hasAudio ? 8 : 12,
                               bottom: 8,
                             ),
-                            child: Text(
-                              widget.message,
-                              style: TextStyle(
-                                color: textColor,
-                                fontSize: 15,
-                                height: 1.4,
-                              ),
-                            ),
+                            child: _buildMessageText(textColor),
                           ),
 
                         Padding(

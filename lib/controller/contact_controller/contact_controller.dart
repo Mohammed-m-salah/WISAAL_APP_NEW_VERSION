@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wissal_app/model/ChatRoomModel.dart';
 import 'package:wissal_app/model/user_model.dart';
+import 'package:wissal_app/controller/chat_controller/chat_controller.dart';
+import 'package:wissal_app/widgets/glass_snackbar.dart';
 
 class ContactController extends GetxController {
   final db = Supabase.instance.client;
@@ -285,25 +287,66 @@ class ContactController extends GetxController {
     }
   }
 
-  /// حذف غرفة دردشة بالكامل (مع جميع الرسائل)
-  Future<void> deleteChatRoom(String roomId) async {
+  /// حذف غرفة دردشة بالكامل (مع جميع الرسائل) - يعود كأنه لم يتواصل من قبل
+  Future<bool> deleteChatRoom(String roomId) async {
     try {
-      // حذف جميع الرسائل في الغرفة أولاً
+      // 1. حذف جميع الرسائل في الغرفة
       await db.from('chats').delete().eq('roomId', roomId);
 
-      // ثم حذف الغرفة نفسها
+      // 2. حذف الغرفة نفسها
       await db.from('chat_rooms').delete().eq('id', roomId);
 
-      // إزالة من بيانات التثبيت المحلية
+      // 3. إزالة من بيانات التثبيت المحلية
       final pinnedData = await _loadPinnedRoomsFromLocal();
       pinnedData.remove(roomId);
       await _savePinnedRoomsToLocal(pinnedData);
 
-      // إزالة من القائمة المحلية
+      // 4. إزالة من الأرشيف المحلي
+      final archivedIds = await _loadArchivedRoomsFromLocal();
+      archivedIds.remove(roomId);
+      await _saveArchivedRoomsToLocal(archivedIds);
+
+      // 5. إزالة من القوائم المحلية
       chatRoomList.removeWhere((r) => r.id == roomId);
-      print("🗑️ تم حذف الغرفة بنجاح");
+      archivedChatRoomList.removeWhere((r) => r.id == roomId);
+
+      // 6. مسح الكاش المحلي للرسائل (إن وجد)
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('chat_cache_$roomId');
+        await prefs.remove('messages_$roomId');
+      } catch (_) {}
+
+      // 7. مسح كاش ChatController
+      if (Get.isRegistered<ChatController>()) {
+        Get.find<ChatController>().clearRoomCache(roomId);
+      }
+
+      GlassSnackbar.deleted(message: 'تم حذف الدردشة');
+      print("🗑️ تم حذف الدردشة بالكامل - كأنه لم يتواصل من قبل");
+      return true;
     } catch (error) {
-      print("❌ خطأ في حذف الغرفة: $error");
+      print("❌ خطأ في حذف الدردشة: $error");
+      GlassSnackbar.error(title: 'خطأ', message: 'فشل حذف الدردشة');
+      return false;
+    }
+  }
+
+  /// حذف الدردشة مع مستخدم معين بالكامل
+  Future<bool> deleteChatWithUser(String otherUserId) async {
+    try {
+      final currentUserId = auth.currentUser?.id;
+      if (currentUserId == null) return false;
+
+      // إنشاء roomId (نفس الطريقة المستخدمة في chat_controller)
+      final List<String> ids = [currentUserId, otherUserId];
+      ids.sort();
+      final roomId = ids.join('_');
+
+      return await deleteChatRoom(roomId);
+    } catch (error) {
+      print("❌ خطأ في حذف الدردشة مع المستخدم: $error");
+      return false;
     }
   }
 

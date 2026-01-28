@@ -21,6 +21,9 @@ import 'package:wissal_app/services/local_database/local_database_service.dart';
 import 'package:wissal_app/services/connectivity/connectivity_service.dart';
 import 'package:wissal_app/services/sync/sync_service.dart';
 import 'package:wissal_app/services/offline_queue/offline_queue_service.dart';
+import 'package:wissal_app/services/cache/message_cache_service.dart';
+import 'package:wissal_app/controller/notification_controller/notification_controller.dart';
+import 'package:wissal_app/services/notifications/notification_service.dart';
 
 class ChatController extends GetxController {
   // Retry configuration for realtime connections
@@ -74,8 +77,10 @@ class ChatController extends GetxController {
   ConnectivityService get _connectivity => Get.find<ConnectivityService>();
   SyncService get _syncService => Get.find<SyncService>();
   OfflineQueueService get _offlineQueue => Get.find<OfflineQueueService>();
+  MessageCacheService get _cacheService => Get.find<MessageCacheService>();
 
   final isLoading = false.obs;
+  final isLoadingFromCache = false.obs;
   final isSending = false.obs;
   final isTyping = false.obs;
 
@@ -123,6 +128,31 @@ class ChatController extends GetxController {
     List<String> ids = [currentUserId, targetUserId];
     ids.sort();
     return ids.join('_');
+  }
+
+  /// مسح كاش الرسائل لغرفة معينة (يُستخدم عند حذف الدردشة)
+  void clearRoomCache(String roomId) {
+    _messagesCache.remove(roomId);
+
+    // إغلاق الـ StreamController إن وجد
+    if (_messageStreamControllers.containsKey(roomId)) {
+      _messageStreamControllers[roomId]?.close();
+      _messageStreamControllers.remove(roomId);
+    }
+
+    // إزالة قناة الـ realtime
+    if (_chatChannels.containsKey(roomId)) {
+      db.removeChannel(_chatChannels[roomId]!);
+      _chatChannels.remove(roomId);
+    }
+
+    // مسح الرسائل المثبتة إذا كانت لنفس الغرفة
+    if (currentChatRoomId.value == roomId) {
+      pinnedMessages.clear();
+      currentChatRoomId.value = '';
+    }
+
+    print('🧹 تم مسح كاش الغرفة: $roomId');
   }
 
   UserModel getSender(UserModel currentUser, UserModel targetUser) {
@@ -181,6 +211,9 @@ class ChatController extends GetxController {
     selectedAudioPath.value = "";
 
     _localDb.saveMessage(newChat);
+
+    // تحديث الكاش السريع
+    _cacheService.addMessageToCache(roomId, newChat);
 
     _sendMessageToServer(
       chatId: chatId,
@@ -295,6 +328,40 @@ class ChatController extends GetxController {
 
       contactController.saveContact(targetUser);
       contactController.getChatRoomList();
+
+      // Send push notification
+      final notificationService = NotificationService();
+      final senderName = profileController.currentUser.value.name ?? 'مستخدم';
+
+      if (message.isNotEmpty) {
+        // Text message notification
+        await notificationService.sendMessageNotification(
+          receiverId: targetUserId,
+          senderName: senderName,
+          messageText: message,
+          chatId: roomId,
+          isGroup: false,
+        );
+      } else if (uploadedImageUrls.isNotEmpty) {
+        // Image notification
+        await notificationService.sendMediaNotification(
+          receiverId: targetUserId,
+          senderName: senderName,
+          mediaType: NotificationType.image,
+          chatId: roomId,
+          isGroup: false,
+          imageUrl: uploadedImageUrls.first,
+        );
+      } else if (audioUrlValue.isNotEmpty) {
+        // Voice notification
+        await notificationService.sendMediaNotification(
+          receiverId: targetUserId,
+          senderName: senderName,
+          mediaType: NotificationType.voice,
+          chatId: roomId,
+          isGroup: false,
+        );
+      }
     } catch (e) {
       print("❌ Error sending message: $e");
       newChat.syncStatus = MessageSyncStatus.failed;
@@ -461,6 +528,16 @@ class ChatController extends GetxController {
           // ⚡ إخطار الـ Stream بتحديث الرسالة الصوتية
           _notifyMessageAdded(roomId);
         }
+
+        // Send push notification for voice message
+        final notificationService = NotificationService();
+        await notificationService.sendMediaNotification(
+          receiverId: targetUserId,
+          senderName: profileController.currentUser.value.name ?? 'مستخدم',
+          mediaType: NotificationType.voice,
+          chatId: roomId,
+          isGroup: false,
+        );
 
         print('✅ تم إرسال الرسالة الصوتية بنجاح');
       } catch (e) {
@@ -638,10 +715,22 @@ class ChatController extends GetxController {
     }
   }
 
-  /// Load messages from local database
+  /// Load messages from local database and cache
   Future<void> _loadLocalMessages(
       String roomId, StreamController<List<ChatModel>> controller) async {
     try {
+      isLoadingFromCache.value = true;
+
+      // أولاً: محاولة جلب من الكاش السريع
+      if (_cacheService.hasCachedMessages(roomId)) {
+        final cachedMessages = _cacheService.getCachedMessages(roomId);
+        if (cachedMessages.isNotEmpty) {
+          _messagesCache[roomId]?.value = cachedMessages;
+          controller.add(cachedMessages);
+          print('⚡ Loaded ${cachedMessages.length} messages from quick cache');
+        }
+      }
+
       final localMessages = _localDb.getMessagesByRoom(roomId);
 
       // Also get pending messages for this room
@@ -685,10 +774,16 @@ class ChatController extends GetxController {
 
       _messagesCache[roomId]?.value = allMessages;
       controller.add(allMessages);
+
+      // تحديث الكاش السريع
+      await _cacheService.cacheMessages(roomId, allMessages);
+
       print(
           '📬 Loaded ${localMessages.length} local + ${pendingMessages.length} pending messages');
     } catch (e) {
       print('❌ Error loading local messages: $e');
+    } finally {
+      isLoadingFromCache.value = false;
     }
   }
 
@@ -757,6 +852,10 @@ class ChatController extends GetxController {
 
       _messagesCache[roomId]?.value = allMessages;
       controller.add(allMessages);
+
+      // تحديث الكاش السريع بعد المزامنة
+      await _cacheService.cacheMessages(roomId, allMessages);
+
       print(
           '📬 Synced ${messages.length} server + ${pendingChatModels.length + localPendingMessages.length} pending messages');
     } catch (e) {
@@ -974,7 +1073,9 @@ class ChatController extends GetxController {
     final isRetryable = errorStr.contains('timedOut') ||
         errorStr.contains('Connection terminated') ||
         errorStr.contains('HandshakeException') ||
-        errorStr.contains('SocketException');
+        errorStr.contains('SocketException') ||
+        errorStr.contains('ClientException') ||
+        errorStr.contains('Connection closed');
 
     if (isRetryable && _incomingMessagesRetryCount < _maxRealtimeRetries) {
       _incomingMessagesRetryCount++;
@@ -991,6 +1092,10 @@ class ChatController extends GetxController {
     } else if (_incomingMessagesRetryCount >= _maxRealtimeRetries) {
       print(
           '❌ Max realtime retries reached. Will retry on connection restored.');
+      // Reset after some time to allow retrying later
+      Timer(const Duration(seconds: 30), () {
+        _incomingMessagesRetryCount = 0;
+      });
     }
   }
 
@@ -1208,6 +1313,30 @@ class ChatController extends GetxController {
           _messagesCache[roomId]?.firstWhereOrNull((m) => m.id == messageId);
       if (message != null) {
         pinnedMessages.add(message);
+      }
+
+      // Send notification to the other user
+      final currentUserId = auth.currentUser?.id;
+      if (currentUserId != null) {
+        // Extract the other user ID from roomId (format: id1_id2)
+        final ids = roomId.split('_');
+        final otherUserId = ids.firstWhere(
+          (id) => id != currentUserId,
+          orElse: () => '',
+        );
+
+        if (otherUserId.isNotEmpty) {
+          final notificationService = NotificationService();
+          final senderName = profileController.currentUser.value.name ?? 'مستخدم';
+
+          await notificationService.sendPinNotification(
+            receiverIds: [otherUserId],
+            senderName: senderName,
+            messageText: messageText,
+            targetId: roomId,
+            isGroup: false,
+          );
+        }
       }
 
       print("📌 تم تثبيت الرسالة بنجاح (${pinnedMessages.length} رسائل مثبتة)");

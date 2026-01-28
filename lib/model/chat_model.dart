@@ -66,6 +66,21 @@ class ChatModel extends HiveObject {
   @HiveField(19)
   String? roomId;
 
+  @HiveField(20)
+  String? messageType; // 'normal', 'system'
+
+  @HiveField(21)
+  String? deletedBy; // ID of admin who deleted
+
+  @HiveField(22)
+  String? deletedByName; // Name of admin who deleted
+
+  @HiveField(23)
+  List<String>? seenBy; // List of user IDs who have seen the message
+
+  @HiveField(24)
+  List<String>? deliveredTo; // List of user IDs who received the message
+
   ChatModel({
     this.id,
     this.message,
@@ -87,6 +102,11 @@ class ChatModel extends HiveObject {
     this.forwardedFrom,
     this.syncStatus,
     this.roomId,
+    this.messageType = 'normal',
+    this.deletedBy,
+    this.deletedByName,
+    this.seenBy,
+    this.deliveredTo,
   });
 
   static List<String> _parseStringList(dynamic value) {
@@ -169,6 +189,11 @@ class ChatModel extends HiveObject {
       forwardedFrom: json['forwardedFrom'],
       syncStatus: syncStatus,
       roomId: json['roomId'],
+      messageType: json['messageType'] ?? 'normal',
+      deletedBy: json['deletedBy'],
+      deletedByName: json['deletedByName'],
+      seenBy: _parseStringList(json['seenBy']),
+      deliveredTo: _parseStringList(json['deliveredTo']),
     );
   }
 
@@ -210,6 +235,11 @@ class ChatModel extends HiveObject {
       'isForwarded': isForwarded ?? false,
       'forwardedFrom': forwardedFrom,
       'roomId': roomId,
+      'messageType': messageType ?? 'normal',
+      'deletedBy': deletedBy,
+      'deletedByName': deletedByName,
+      'seenBy': seenBy ?? [],
+      'deliveredTo': deliveredTo ?? [],
     };
   }
 
@@ -234,6 +264,11 @@ class ChatModel extends HiveObject {
     String? forwardedFrom,
     MessageSyncStatus? syncStatus,
     String? roomId,
+    String? messageType,
+    String? deletedBy,
+    String? deletedByName,
+    List<String>? seenBy,
+    List<String>? deliveredTo,
   }) {
     return ChatModel(
       id: id ?? this.id,
@@ -256,6 +291,25 @@ class ChatModel extends HiveObject {
       forwardedFrom: forwardedFrom ?? this.forwardedFrom,
       syncStatus: syncStatus ?? this.syncStatus,
       roomId: roomId ?? this.roomId,
+      messageType: messageType ?? this.messageType,
+      deletedBy: deletedBy ?? this.deletedBy,
+      deletedByName: deletedByName ?? this.deletedByName,
+      seenBy: seenBy ?? this.seenBy,
+      deliveredTo: deliveredTo ?? this.deliveredTo,
     );
   }
+
+  bool get isSystemMessage => messageType == 'system';
+
+  /// Get the count of users who have seen this message
+  int get seenCount => seenBy?.length ?? 0;
+
+  /// Get the count of users who received this message
+  int get deliveredCount => deliveredTo?.length ?? 0;
+
+  /// Check if a specific user has seen this message
+  bool hasSeenBy(String odId) => seenBy?.contains(odId) ?? false;
+
+  /// Check if a specific user has received this message
+  bool hasDeliveredTo(String odId) => deliveredTo?.contains(odId) ?? false;
 }

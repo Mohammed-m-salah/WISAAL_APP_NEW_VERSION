@@ -82,17 +82,19 @@ class ConnectivityBanner extends StatelessWidget {
   String _getMessage(bool isOnline, int pendingCount, bool isProcessing) {
     if (!isOnline) {
       if (pendingCount > 0) {
-        return 'No connection - $pendingCount message${pendingCount > 1 ? 's' : ''} pending';
+        final key = pendingCount > 1 ? 'no_connection_pending_plural' : 'no_connection_pending';
+        return key.tr.replaceAll('@count', pendingCount.toString());
       }
-      return 'No internet connection';
+      return 'no_internet'.tr;
     }
 
     if (isProcessing) {
-      return 'Sending pending messages...';
+      return 'sending_pending'.tr;
     }
 
     if (pendingCount > 0) {
-      return '$pendingCount message${pendingCount > 1 ? 's' : ''} waiting to send';
+      final key = pendingCount > 1 ? 'messages_waiting_plural' : 'messages_waiting';
+      return key.tr.replaceAll('@count', pendingCount.toString());
     }
 
     return '';
@@ -130,7 +132,7 @@ class ConnectivityIndicator extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             Text(
-              isOnline ? 'Online' : 'Offline',
+              isOnline ? 'online'.tr : 'offline'.tr,
               style: TextStyle(
                 color: isOnline ? Colors.green : Colors.red,
                 fontSize: 11,

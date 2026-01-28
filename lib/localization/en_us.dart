@@ -252,4 +252,60 @@ const Map<String, String> enUS = {
   // Reactions
   'reactions': 'Reactions',
   'react': 'React',
+
+  // Connection Status
+  'no_connection': 'No connection',
+  'no_connection_pending': 'No connection - @count message pending',
+  'no_connection_pending_plural': 'No connection - @count messages pending',
+  'sending_pending': 'Sending pending messages...',
+  'messages_waiting': '@count message waiting to send',
+  'messages_waiting_plural': '@count messages waiting to send',
+  'connection_restored': 'Connection restored',
+  'syncing_messages': 'Syncing messages...',
+  'sync_complete': 'Sync complete',
+  'sync_failed': 'Sync failed',
+
+  // Cache Status
+  'loading_cached': 'Loading cached messages...',
+  'cached_messages': 'Cached messages',
+  'no_cached_messages': 'No cached messages',
+  'cache_cleared': 'Cache cleared',
+
+  // Group System Messages
+  'member_added_by': '@member was added by @admin',
+  'member_removed_by': '@member was removed by @admin',
+  'promoted_to_admin': '@name is now an admin',
+  'demoted_from_admin': '@name is no longer an admin',
+  'deleted_by_admin': 'Deleted by admin @name',
+  'message_forwarded': 'Forwarded message',
+  'forwarded_from': 'Forwarded from @name',
+
+  // Message Seen Status
+  'message_info': 'Message Info',
+  'seen': 'Seen',
+  'pending': 'Pending',
+  'no_one_seen': 'No one has seen it yet',
+  'no_one_received': 'No one has received it yet',
+  'everyone_received': 'Everyone received the message',
+  'group_owner': 'Group Owner',
+  'group_admin': 'Admin',
+  'member': 'Member',
+  'seen_by': 'Seen by',
+  'delivered_to': 'Delivered to',
+  'not_delivered': 'Not delivered yet',
+
+  // Mute Notifications
+  'mute_notifications': 'Mute Notifications',
+  'mute': 'Mute',
+  'unmute': 'Unmute',
+  'mute_duration': 'Mute Duration',
+  'muted_until': 'Muted for @time',
+  'exceptions': 'Exceptions',
+  'exceptions_hint': 'These notifications will reach you even when muted',
+  'allow_mentions': 'Allow mentions (@)',
+  'allow_mentions_hint': 'Get notified when someone mentions you',
+  'allow_pinned': 'Allow pinned messages',
+  'allow_pinned_hint': 'Get notified for important pinned messages',
+  'notifications_muted': 'Notifications muted',
+  'notifications_unmuted': 'Notifications unmuted',
 };

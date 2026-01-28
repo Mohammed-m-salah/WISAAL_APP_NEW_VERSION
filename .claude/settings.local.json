@@ -9,7 +9,10 @@
       "Bash(timeout:*)",
       "Bash(dart compile:*)",
       "Bash(dart analyze:*)",
-      "Bash(dart format:*)"
+      "Bash(dart format:*)",
+      "Bash(ls -la \"E:\\\\File_flutter\\\\flutter\\\\Wisaal_App\\\\wissal_app\\\\build\\\\app\\\\outputs\\\\flutter-apk\"\" 2>/dev/null || echo \"APK directory not found \")",
+      "Bash(flutter install:*)",
+      "Bash(flutter build:*)"
     ]
   }
 }

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wissal_app/services/notifications/notification_service.dart';
+import 'package:wissal_app/controller/profile_controller/profile_controller.dart';
 
 class ReactionEmoji {
   static const String love = '❤️';
@@ -85,7 +87,7 @@ class ReactionsController extends GetxController {
       print('📡 جلب الرسالة من قاعدة البيانات...');
       final response = await db
           .from('chats')
-          .select('id, reactions')
+          .select('id, reactions, senderId, roomId')
           .eq('id', messageId)
           .maybeSingle();
 
@@ -96,6 +98,10 @@ class ReactionsController extends GetxController {
         print('⚠️ الرسالة غير موجودة في السيرفر - تحديث محلي فقط');
         return;
       }
+
+      // Get sender info for notification
+      final messageSenderId = response['senderId'] as String?;
+      final roomId = response['roomId'] as String?;
 
       List<String> reactions = [];
       if (response['reactions'] != null) {
@@ -149,6 +155,28 @@ class ReactionsController extends GetxController {
       // تحديث الكاش بالقيمة النهائية
       _localReactionsCache[messageId] = reactions;
       onReactionUpdated?.call(messageId, reactions);
+
+      // Send notification to message sender (if not self)
+      if (messageSenderId != null &&
+          messageSenderId != currentUser.id &&
+          roomId != null) {
+        try {
+          final profileController = Get.find<ProfileController>();
+          final senderName = profileController.currentUser.value.name ?? 'مستخدم';
+          final notificationService = NotificationService();
+
+          await notificationService.sendReactionNotification(
+            receiverId: messageSenderId,
+            senderName: senderName,
+            emoji: emoji,
+            chatId: roomId,
+            isGroup: false,
+          );
+          print('🔔 تم إرسال إشعار التفاعل');
+        } catch (e) {
+          print('⚠️ فشل إرسال إشعار التفاعل: $e');
+        }
+      }
 
       print('✅ تم إضافة التفاعل: $emoji على الرسالة: $messageId');
     } catch (e) {

@@ -6,10 +6,13 @@ import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wissal_app/controller/profile_controller/profile_controller.dart';
+import 'package:wissal_app/controller/reactions_controller/reactions_controller.dart';
 import 'package:wissal_app/model/Group_model.dart';
 import 'package:wissal_app/model/chat_model.dart';
 import 'package:wissal_app/model/user_model.dart';
 import 'package:wissal_app/pages/Homepage/home_page.dart';
+import 'package:wissal_app/services/cache/message_cache_service.dart';
+import 'package:wissal_app/services/notifications/notification_service.dart';
 
 class GroupController extends GetxController {
   RxList<UserModel> selectedMembers = <UserModel>[].obs; // للتوافق
@@ -19,8 +22,18 @@ class GroupController extends GetxController {
   final uuid = Uuid();
   RxBool isLoading = false.obs;
   RxBool isSending = false.obs;
+  RxBool isLoadingFromCache = false.obs;
   RxList<GroupModel> groupList = <GroupModel>[].obs;
   ProfileController get profileController => Get.find<ProfileController>();
+
+  // Cache service
+  MessageCacheService? get _cacheService {
+    try {
+      return Get.find<MessageCacheService>();
+    } catch (e) {
+      return null;
+    }
+  }
 
   RxString selectedImagePath = ''.obs;
   RxString selectedAudioPath = ''.obs;
@@ -258,6 +271,29 @@ class GroupController extends GetxController {
     }
   }
 
+  /// Send a system message to the group
+  Future<void> _sendSystemMessage({
+    required String groupId,
+    required String message,
+  }) async {
+    try {
+      final chatId = uuid.v4();
+      final now = DateTime.now().toIso8601String();
+
+      await db.from('group_chats').insert({
+        'id': chatId,
+        'groupId': groupId,
+        'message': message,
+        'messageType': 'system',
+        'timeStamp': now,
+        'senderId': 'system',
+        'senderName': 'النظام',
+      });
+    } catch (e) {
+      print("❌ خطأ في إرسال رسالة النظام: $e");
+    }
+  }
+
   Future<bool> addMembersToGroup(
       String groupId, List<UserModel> newMembers) async {
     try {
@@ -270,7 +306,9 @@ class GroupController extends GetxController {
         return false;
       }
 
+      final currentUser = profileController.currentUser.value;
       final updatedMembers = List<GroupMember>.from(group.groupMembers);
+
       for (final user in newMembers) {
         if (!updatedMembers.any((m) => m.odId == user.id)) {
           updatedMembers.add(GroupMember(
@@ -280,12 +318,30 @@ class GroupController extends GetxController {
             role: MemberRole.member,
             joinedAt: DateTime.now(),
           ));
+
+          // Send system message for each added member
+          await _sendSystemMessage(
+            groupId: groupId,
+            message: "تم إضافة ${user.name ?? 'عضو'} بواسطة ${currentUser.name ?? 'المشرف'}",
+          );
         }
       }
 
       await db.from('groups').update({
         'members': updatedMembers.map((m) => m.toJson()).toList(),
       }).eq('id', groupId);
+
+      // Send notification to added members
+      final notificationService = NotificationService();
+      final addedMemberIds = newMembers.map((m) => m.id ?? '').toList();
+      await notificationService.sendGroupEventNotification(
+        receiverIds: addedMemberIds,
+        eventType: NotificationType.groupAdd,
+        groupId: groupId,
+        groupName: group.name ?? 'مجموعة',
+        targetUserName: currentUser.name ?? 'المشرف',
+        adminName: currentUser.name,
+      );
 
       await getGroups();
       Get.snackbar("تم", "تم إضافة ${newMembers.length} عضو");
@@ -307,12 +363,24 @@ class GroupController extends GetxController {
         return false;
       }
 
+      final currentUser = profileController.currentUser.value;
+      final removedMember = group.groupMembers.firstWhere(
+        (m) => m.odId == memberId,
+        orElse: () => GroupMember(odId: '', name: 'عضو', joinedAt: DateTime.now()),
+      );
+
       final updatedMembers =
           group.groupMembers.where((m) => m.odId != memberId).toList();
 
       await db.from('groups').update({
         'members': updatedMembers.map((m) => m.toJson()).toList(),
       }).eq('id', groupId);
+
+      // Send system message
+      await _sendSystemMessage(
+        groupId: groupId,
+        message: "تم إزالة ${removedMember.name} بواسطة ${currentUser.name ?? 'المشرف'}",
+      );
 
       await getGroups();
       Get.snackbar("تم", "تم إزالة العضو من المجموعة");
@@ -364,6 +432,11 @@ class GroupController extends GetxController {
         return false;
       }
 
+      final promotedMember = group.groupMembers.firstWhere(
+        (m) => m.odId == memberId,
+        orElse: () => GroupMember(odId: '', name: 'عضو', joinedAt: DateTime.now()),
+      );
+
       final updatedMembers = group.groupMembers.map((m) {
         if (m.odId == memberId) {
           return m.copyWith(role: MemberRole.admin);
@@ -374,6 +447,22 @@ class GroupController extends GetxController {
       await db.from('groups').update({
         'members': updatedMembers.map((m) => m.toJson()).toList(),
       }).eq('id', groupId);
+
+      // Send system message
+      await _sendSystemMessage(
+        groupId: groupId,
+        message: "${promotedMember.name} أصبح مشرفاً",
+      );
+
+      // Send notification to the promoted member
+      final notificationService = NotificationService();
+      await notificationService.sendGroupEventNotification(
+        receiverIds: [memberId],
+        eventType: NotificationType.groupPromote,
+        groupId: groupId,
+        groupName: group.name ?? 'مجموعة',
+        targetUserName: promotedMember.name,
+      );
 
       await getGroups();
       Get.snackbar("تم", "تم ترقية العضو إلى مشرف");
@@ -400,6 +489,11 @@ class GroupController extends GetxController {
         return false;
       }
 
+      final demotedMember = group.groupMembers.firstWhere(
+        (m) => m.odId == memberId,
+        orElse: () => GroupMember(odId: '', name: 'عضو', joinedAt: DateTime.now()),
+      );
+
       final updatedMembers = group.groupMembers.map((m) {
         if (m.odId == memberId) {
           return m.copyWith(role: MemberRole.member);
@@ -410,6 +504,12 @@ class GroupController extends GetxController {
       await db.from('groups').update({
         'members': updatedMembers.map((m) => m.toJson()).toList(),
       }).eq('id', groupId);
+
+      // Send system message
+      await _sendSystemMessage(
+        groupId: groupId,
+        message: "تم إزالة صلاحيات المشرف من ${demotedMember.name}",
+      );
 
       await getGroups();
       Get.snackbar("تم", "تم إزالة صلاحيات المشرف");
@@ -630,6 +730,46 @@ class GroupController extends GetxController {
         'lastMessageSenderId': currentUserId,
       }).eq('id', groupId);
 
+      // تحديث الكاش
+      _cacheService?.addGroupMessageToCache(groupId, newChat);
+
+      // Send push notifications to all group members
+      final notificationService = NotificationService();
+      final memberIds = group.groupMembers.map((m) => m.odId).toList();
+
+      if (message.isNotEmpty) {
+        // Text message notification
+        await notificationService.sendGroupNotification(
+          groupId: groupId,
+          memberIds: memberIds,
+          senderName: sender.name ?? 'مستخدم',
+          messageText: message,
+          groupName: group.name ?? 'مجموعة',
+          type: NotificationType.message,
+        );
+      } else if (imageUrl.value.isNotEmpty) {
+        // Image notification
+        await notificationService.sendGroupNotification(
+          groupId: groupId,
+          memberIds: memberIds,
+          senderName: sender.name ?? 'مستخدم',
+          messageText: '',
+          groupName: group.name ?? 'مجموعة',
+          type: NotificationType.image,
+          imageUrl: imageUrl.value,
+        );
+      } else if (audioUrl.value.isNotEmpty) {
+        // Voice notification
+        await notificationService.sendGroupNotification(
+          groupId: groupId,
+          memberIds: memberIds,
+          senderName: sender.name ?? 'مستخدم',
+          messageText: '',
+          groupName: group.name ?? 'مجموعة',
+          type: NotificationType.voice,
+        );
+      }
+
       print("🆗 تم تحديث بيانات المجموعة بنجاح");
     } catch (e) {
       print("❌ خطأ أثناء إرسال الرسالة: $e");
@@ -643,6 +783,9 @@ class GroupController extends GetxController {
   }
 
   Stream<List<ChatModel>> getGroupMessages(String groupId) {
+    // أولاً: تحميل من الكاش بشكل متزامن للعرض الفوري
+    isLoadingFromCache.value = true;
+
     return db
         .from('group_chats')
         .stream(primaryKey: ['id'])
@@ -650,12 +793,27 @@ class GroupController extends GetxController {
         .order('timeStamp')
         .map((data) {
           try {
-            return data.map((e) => ChatModel.fromJson(e)).toList();
+            final messages = data.map((e) => ChatModel.fromJson(e)).toList();
+            // تحديث الكاش بالرسائل الجديدة
+            _cacheService?.cacheGroupMessages(groupId, messages);
+            isLoadingFromCache.value = false;
+            return messages;
           } catch (e) {
             print("❌ خطأ في تحويل الرسائل: $e");
+            isLoadingFromCache.value = false;
             return [];
           }
         });
+  }
+
+  /// الحصول على رسائل المجموعة من الكاش أولاً
+  List<ChatModel> getCachedGroupMessages(String groupId) {
+    return _cacheService?.getCachedGroupMessages(groupId) ?? [];
+  }
+
+  /// التحقق من وجود كاش للمجموعة
+  bool hasCachedGroupMessages(String groupId) {
+    return _cacheService?.hasCachedGroupMessages(groupId) ?? false;
   }
 
   Future<void> markMessageAsDelivered(String messageId, String odId) async {
@@ -791,5 +949,177 @@ class GroupController extends GetxController {
       colorText: Colors.white,
       snackPosition: SnackPosition.BOTTOM,
     );
+  }
+
+  /// Edit a group message
+  Future<bool> editGroupMessage(String messageId, String newText) async {
+    try {
+      final currentUserId = auth.currentUser?.id;
+      if (currentUserId == null) return false;
+
+      // Verify the message belongs to the current user
+      final response = await db
+          .from('group_chats')
+          .select('senderId')
+          .eq('id', messageId)
+          .maybeSingle();
+
+      if (response == null || response['senderId'] != currentUserId) {
+        showError("لا يمكنك تعديل هذه الرسالة");
+        return false;
+      }
+
+      await db.from('group_chats').update({
+        'message': newText,
+        'isEdited': true,
+      }).eq('id', messageId);
+
+      showSuccess("تم تعديل الرسالة");
+      return true;
+    } catch (e) {
+      showError("فشل تعديل الرسالة: $e");
+      return false;
+    }
+  }
+
+  /// Delete a group message (soft delete)
+  Future<bool> deleteGroupMessage(
+    String groupId,
+    String messageId, {
+    bool isAdmin = false,
+  }) async {
+    try {
+      final currentUserId = auth.currentUser?.id;
+      if (currentUserId == null) return false;
+
+      final group = await getGroupById(groupId);
+      if (group == null) return false;
+
+      // Get message info
+      final response = await db
+          .from('group_chats')
+          .select('senderId')
+          .eq('id', messageId)
+          .maybeSingle();
+
+      if (response == null) return false;
+
+      final isSender = response['senderId'] == currentUserId;
+      final isGroupAdmin = group.isAdmin(currentUserId);
+
+      if (!isSender && !isGroupAdmin) {
+        showError("ليس لديك صلاحية لحذف هذه الرسالة");
+        return false;
+      }
+
+      final currentUser = profileController.currentUser.value;
+
+      // Soft delete with admin info if deleted by admin
+      if (isGroupAdmin && !isSender) {
+        await db.from('group_chats').update({
+          'isDeleted': true,
+          'deletedBy': currentUserId,
+          'deletedByName': currentUser.name ?? 'المشرف',
+        }).eq('id', messageId);
+      } else {
+        await db.from('group_chats').update({
+          'isDeleted': true,
+        }).eq('id', messageId);
+      }
+
+      showSuccess("تم حذف الرسالة");
+      return true;
+    } catch (e) {
+      showError("فشل حذف الرسالة: $e");
+      return false;
+    }
+  }
+
+  /// Add reaction to a group message
+  Future<void> addGroupReaction(String messageId, String emoji) async {
+    final currentUser = auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      // Get current reactions
+      final response = await db
+          .from('group_chats')
+          .select('reactions')
+          .eq('id', messageId)
+          .maybeSingle();
+
+      if (response == null) return;
+
+      List<String> reactions = [];
+      if (response['reactions'] != null) {
+        if (response['reactions'] is List) {
+          reactions = List<String>.from(response['reactions']);
+        } else if (response['reactions'] is String) {
+          try {
+            final decoded = jsonDecode(response['reactions']);
+            if (decoded is List) {
+              reactions = List<String>.from(decoded);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Remove previous reaction from this user
+      reactions.removeWhere((r) => r.contains(':${currentUser.id}'));
+
+      // Add new reaction if emoji is not empty
+      if (emoji.isNotEmpty) {
+        reactions.add('$emoji:${currentUser.id}');
+      }
+
+      // Save to database
+      await db.from('group_chats').update({
+        'reactions': jsonEncode(reactions),
+      }).eq('id', messageId);
+
+      print('✅ تم إضافة التفاعل: $emoji');
+    } catch (e) {
+      print('❌ خطأ في إضافة التفاعل: $e');
+    }
+  }
+
+  /// Remove reaction from a group message
+  Future<void> removeGroupReaction(String messageId) async {
+    await addGroupReaction(messageId, '');
+  }
+
+  /// Forward a message to another group or chat
+  Future<bool> forwardGroupMessage({
+    required ChatModel message,
+    required String toGroupId,
+  }) async {
+    try {
+      final currentUserId = auth.currentUser?.id;
+      if (currentUserId == null) return false;
+
+      final sender = profileController.currentUser.value;
+      final chatId = uuid.v4();
+      final now = DateTime.now().toIso8601String();
+
+      await db.from('group_chats').insert({
+        'id': chatId,
+        'groupId': toGroupId,
+        'senderId': sender.id,
+        'senderName': sender.name,
+        'message': message.message ?? '',
+        'imageUrl': message.imageUrl ?? '',
+        'audioUrl': message.audioUrl ?? '',
+        'timeStamp': now,
+        'isForwarded': true,
+        'forwardedFrom': message.senderName ?? 'مستخدم',
+        'readStatus': 'Sent',
+      });
+
+      showSuccess("تم تحويل الرسالة");
+      return true;
+    } catch (e) {
+      showError("فشل تحويل الرسالة: $e");
+      return false;
+    }
   }
 }

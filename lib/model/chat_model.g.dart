@@ -37,13 +37,18 @@ class ChatModelAdapter extends TypeAdapter<ChatModel> {
       forwardedFrom: fields[17] as String?,
       syncStatus: fields[18] as MessageSyncStatus?,
       roomId: fields[19] as String?,
+      messageType: fields[20] as String?,
+      deletedBy: fields[21] as String?,
+      deletedByName: fields[22] as String?,
+      seenBy: (fields[23] as List?)?.cast<String>(),
+      deliveredTo: (fields[24] as List?)?.cast<String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, ChatModel obj) {
     writer
-      ..writeByte(20)
+      ..writeByte(25)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -83,7 +88,17 @@ class ChatModelAdapter extends TypeAdapter<ChatModel> {
       ..writeByte(18)
       ..write(obj.syncStatus)
       ..writeByte(19)
-      ..write(obj.roomId);
+      ..write(obj.roomId)
+      ..writeByte(20)
+      ..write(obj.messageType)
+      ..writeByte(21)
+      ..write(obj.deletedBy)
+      ..writeByte(22)
+      ..write(obj.deletedByName)
+      ..writeByte(23)
+      ..write(obj.seenBy)
+      ..writeByte(24)
+      ..write(obj.deliveredTo);
   }
 
   @override

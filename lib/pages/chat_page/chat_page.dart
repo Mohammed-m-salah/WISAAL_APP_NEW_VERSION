@@ -23,6 +23,8 @@ import 'package:wissal_app/model/message_sync_status.dart';
 import 'package:wissal_app/utils/responsive.dart';
 import 'package:wissal_app/widgets/skeleton_loading.dart';
 import 'package:wissal_app/widgets/voice_recorder_widget.dart';
+import 'package:wissal_app/widgets/mute_settings_sheet.dart';
+import 'package:wissal_app/services/notifications/notification_service.dart';
 import 'dart:async';
 
 class ChatPage extends StatefulWidget {
@@ -61,6 +63,24 @@ class _ChatPageState extends State<ChatPage>
   Timer? _recordingTimer;
   DateTime? _recordingStartTime;
   double _voiceDragOffset = 0;
+
+  String _getValidImageUrl(String? imageUrl) {
+    if (imageUrl == null || imageUrl.trim().isEmpty) return '';
+    final trimmed = imageUrl.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    return '';
+  }
+
+  List<String>? _getValidImageUrls(List<String>? imageUrls) {
+    if (imageUrls == null || imageUrls.isEmpty) return null;
+    final validUrls = imageUrls.where((url) {
+      final trimmed = url.trim();
+      return trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    }).toList();
+    return validUrls.isEmpty ? null : validUrls;
+  }
 
   @override
   void initState() {
@@ -240,6 +260,27 @@ class _ChatPageState extends State<ChatPage>
         });
       }
     }
+  }
+
+  Future<void> _showMuteSettings() async {
+    final roomId = chatcontroller.getRoomId(widget.userModel.id!);
+    final notificationService = NotificationService();
+
+    // Get current mute settings
+    final currentSettings = await notificationService.getCurrentUserMuteSettings(
+      targetId: roomId,
+      targetType: 'chat',
+    );
+
+    if (!mounted) return;
+
+    await showMuteSettingsSheet(
+      context: context,
+      targetId: roomId,
+      targetType: 'chat',
+      targetName: widget.userModel.name ?? 'User',
+      currentSettings: currentSettings,
+    );
   }
 
   Widget _buildPinnedMessageBanner() {
@@ -721,6 +762,26 @@ class _ChatPageState extends State<ChatPage>
                   onPressed: () {},
                   icon: const Icon(Icons.video_call, color: Colors.white),
                 ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                  onSelected: (value) {
+                    if (value == 'mute') {
+                      _showMuteSettings();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'mute',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.notifications_off, size: 20),
+                          const SizedBox(width: 8),
+                          Text('mute_notifications'.tr),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
       ),
       body: Column(
@@ -869,8 +930,8 @@ class _ChatPageState extends State<ChatPage>
                                       )
                                     : '',
                                 status: message.readStatus ?? "Read",
-                                imgUrl: message.imageUrl ?? "",
-                                imageUrls: message.imageUrls,
+                                imgUrl: _getValidImageUrl(message.imageUrl),
+                                imageUrls: _getValidImageUrls(message.imageUrls),
                                 isDeleted: message.isDeleted ?? false,
                                 isEdited: message.isEdited ?? false,
                                 isForwarded: message.isForwarded ?? false,

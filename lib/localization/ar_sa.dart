@@ -252,4 +252,60 @@ const Map<String, String> arSA = {
   // Reactions
   'reactions': 'التفاعلات',
   'react': 'تفاعل',
+
+  // Connection Status
+  'no_connection': 'لا يوجد اتصال',
+  'no_connection_pending': 'لا يوجد اتصال - @count رسالة معلقة',
+  'no_connection_pending_plural': 'لا يوجد اتصال - @count رسائل معلقة',
+  'sending_pending': 'جاري إرسال الرسائل المعلقة...',
+  'messages_waiting': '@count رسالة في انتظار الإرسال',
+  'messages_waiting_plural': '@count رسائل في انتظار الإرسال',
+  'connection_restored': 'تم استعادة الاتصال',
+  'syncing_messages': 'جاري مزامنة الرسائل...',
+  'sync_complete': 'تمت المزامنة',
+  'sync_failed': 'فشلت المزامنة',
+
+  // Cache Status
+  'loading_cached': 'جاري تحميل الرسائل المحفوظة...',
+  'cached_messages': 'رسائل محفوظة',
+  'no_cached_messages': 'لا توجد رسائل محفوظة',
+  'cache_cleared': 'تم مسح الذاكرة المؤقتة',
+
+  // Group System Messages
+  'member_added_by': 'تم إضافة @member بواسطة @admin',
+  'member_removed_by': 'تم إزالة @member بواسطة @admin',
+  'promoted_to_admin': '@name أصبح مشرفاً',
+  'demoted_from_admin': 'تم إزالة صلاحيات المشرف من @name',
+  'deleted_by_admin': 'تم الحذف من قبل المشرف @name',
+  'message_forwarded': 'رسالة محولة',
+  'forwarded_from': 'محولة من @name',
+
+  // Message Seen Status
+  'message_info': 'معلومات الرسالة',
+  'seen': 'شاهدوا',
+  'pending': 'في الانتظار',
+  'no_one_seen': 'لم يشاهدها أحد بعد',
+  'no_one_received': 'لم يستلمها أحد بعد',
+  'everyone_received': 'الكل استلم الرسالة',
+  'group_owner': 'مالك المجموعة',
+  'group_admin': 'مشرف',
+  'member': 'عضو',
+  'seen_by': 'شاهدها',
+  'delivered_to': 'وصلت إلى',
+  'not_delivered': 'لم تصل بعد',
+
+  // Mute Notifications
+  'mute_notifications': 'كتم الإشعارات',
+  'mute': 'كتم',
+  'unmute': 'إلغاء الكتم',
+  'mute_duration': 'مدة الكتم',
+  'muted_until': 'مكتوم حتى @time',
+  'exceptions': 'الاستثناءات',
+  'exceptions_hint': 'هذه الإشعارات ستصلك حتى مع الكتم',
+  'allow_mentions': 'السماح بالإشارات (@)',
+  'allow_mentions_hint': 'ستصلك إشعارات عندما يشير إليك أحد',
+  'allow_pinned': 'السماح بالرسائل المثبتة',
+  'allow_pinned_hint': 'ستصلك إشعارات الرسائل المثبتة المهمة',
+  'notifications_muted': 'الإشعارات مكتومة',
+  'notifications_unmuted': 'تم إلغاء كتم الإشعارات',
 };

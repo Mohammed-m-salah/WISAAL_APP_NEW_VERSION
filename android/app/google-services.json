@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "287504862160",
+    "project_id": "testfirbase-1f25a",
+    "storage_bucket": "testfirbase-1f25a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:287504862160:android:7287f8e0e920c1647947d5",
+        "android_client_info": {
+          "package_name": "com.example.wissal_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "287504862160-4ui10gr0jo22uuut9i8magf23ifkhk5j.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA628-vlKQPXtNHoXAd5ggBpJ_lWSjSi2k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "287504862160-4ui10gr0jo22uuut9i8magf23ifkhk5j.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "287504862160-dq9d29hquoleidj3pngjp04p7dng1sgr.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.coreDashboard"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

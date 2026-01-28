@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:app_links/app_links.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'package:wissal_app/config/page_path.dart';
 import 'package:wissal_app/utils/responsive.dart';
@@ -11,6 +13,7 @@ import 'package:wissal_app/config/thems.dart';
 import 'package:wissal_app/controller/call_controller/call_controller.dart';
 import 'package:wissal_app/controller/theme_controller/theme_controller.dart';
 import 'package:wissal_app/controller/locale_controller/locale_controller.dart';
+import 'package:wissal_app/controller/notification_controller/notification_controller.dart';
 import 'package:wissal_app/localization/app_translations.dart';
 import 'package:wissal_app/pages/splash_page/splash_page.dart';
 import 'package:wissal_app/pages/welcom_page/welcom_page.dart';
@@ -20,6 +23,7 @@ import 'package:wissal_app/services/local_database/local_database_service.dart';
 import 'package:wissal_app/services/connectivity/connectivity_service.dart';
 import 'package:wissal_app/services/sync/sync_service.dart';
 import 'package:wissal_app/services/offline_queue/offline_queue_service.dart';
+import 'package:wissal_app/services/cache/message_cache_service.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -48,11 +52,25 @@ Future<void> initOfflineServices() async {
   // Initialize sync service
   await Get.putAsync(() => SyncService().init(), permanent: true);
 
+  // Initialize message cache service
+  await Get.putAsync(() => MessageCacheService().init(), permanent: true);
+
   print('✅ All offline services initialized');
+}
+
+/// Background message handler - must be top-level
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print('Background message: ${message.messageId}');
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp();
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   await initNotifications();
 
@@ -62,12 +80,11 @@ Future<void> main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNieWdwY2JneWxpcGNveHZ1b2dsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMDM1NzIsImV4cCI6MjA4Mzc3OTU3Mn0.LfLHMpw1LzjMwG1aFOpGRh9qeqRbRX2NdKjb0Mfz_co',
   );
 
-  // Initialize offline mode services
   await initOfflineServices();
 
-  // Initialize controllers
   Get.put(ThemeController(), permanent: true);
   Get.put(LocaleController(), permanent: true);
+  Get.put(NotificationController(), permanent: true);
 
   final prefs = await SharedPreferences.getInstance();
   final bool isFirstTime = prefs.getBool('is_first_time') ?? true;

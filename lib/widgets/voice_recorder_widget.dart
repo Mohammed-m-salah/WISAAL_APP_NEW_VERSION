@@ -33,8 +33,13 @@ class VoiceRecorderOverlay extends StatefulWidget {
 }
 
 class _VoiceRecorderOverlayState extends State<VoiceRecorderOverlay>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _animController;
+  late AnimationController _trashAnimController;
+  late AnimationController _absorpController;
+  late Animation<double> _trashScaleAnim;
+  late Animation<double> _trashShakeAnim;
+  late Animation<double> _absorpAnim;
 
   @override
   void initState() {
@@ -43,11 +48,59 @@ class _VoiceRecorderOverlayState extends State<VoiceRecorderOverlay>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     )..repeat(reverse: true);
+
+    _trashAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _absorpController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+
+    _trashScaleAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _trashAnimController, curve: Curves.elasticOut),
+    );
+
+    _trashShakeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _trashAnimController, curve: Curves.easeInOut),
+    );
+
+    _absorpAnim = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _absorpController, curve: Curves.easeIn),
+    );
+  }
+
+  @override
+  void didUpdateWidget(VoiceRecorderOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final cancelThreshold = screenWidth * 0.35;
+    final isDragging = widget.dragOffset < -20;
+    final isCancelling = widget.dragOffset < -cancelThreshold;
+
+    // Show trash when dragging starts
+    if (isDragging && !_trashAnimController.isAnimating && _trashAnimController.value == 0) {
+      _trashAnimController.forward();
+    } else if (!isDragging && _trashAnimController.value == 1) {
+      _trashAnimController.reverse();
+    }
+
+    // Trigger absorb animation when cancelling
+    if (isCancelling && !_absorpController.isAnimating && _absorpController.value == 0) {
+      _absorpController.forward();
+    } else if (!isCancelling && _absorpController.value > 0) {
+      _absorpController.reverse();
+    }
   }
 
   @override
   void dispose() {
     _animController.dispose();
+    _trashAnimController.dispose();
+    _absorpController.dispose();
     super.dispose();
   }
 
@@ -63,11 +116,14 @@ class _VoiceRecorderOverlayState extends State<VoiceRecorderOverlay>
     final screenWidth = MediaQuery.of(context).size.width;
     final cancelThreshold = screenWidth * 0.35;
     final isCancelling = widget.dragOffset < -cancelThreshold;
+    final dragProgress = (widget.dragOffset.abs() / cancelThreshold).clamp(0.0, 1.0);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: isCancelling ? Colors.red.shade50 : theme.scaffoldBackgroundColor,
+        color: isCancelling
+            ? Colors.red.shade50
+            : Color.lerp(theme.scaffoldBackgroundColor, Colors.red.shade50, dragProgress * 0.3),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
@@ -77,73 +133,237 @@ class _VoiceRecorderOverlayState extends State<VoiceRecorderOverlay>
         ],
       ),
       child: SafeArea(
-        child: widget.isLocked ? _buildLockedUI(theme) : _buildRecordingUI(theme, isCancelling),
+        child: widget.isLocked ? _buildLockedUI(theme) : _buildRecordingUI(theme, isCancelling, dragProgress),
       ),
     );
   }
 
-  Widget _buildRecordingUI(ThemeData theme, bool isCancelling) {
-    return Row(
+  Widget _buildRecordingUI(ThemeData theme, bool isCancelling, double dragProgress) {
+    return Stack(
+      alignment: Alignment.center,
       children: [
-        // مؤشر التسجيل
-        AnimatedBuilder(
-          animation: _animController,
-          builder: (context, _) {
-            return Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: isCancelling
-                    ? Colors.grey
-                    : Colors.red.withOpacity(0.5 + 0.5 * _animController.value),
-                shape: BoxShape.circle,
-              ),
-            );
-          },
-        ),
-        const SizedBox(width: 12),
-
-        // الوقت
-        Text(
-          _formatDuration(widget.duration),
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: isCancelling ? Colors.grey : Colors.red.shade700,
-            fontFeatures: const [FontFeature.tabularFigures()],
+        // الحاوية المتحركة للإلغاء (سلة المهملات)
+        Positioned(
+          left: 0,
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_trashAnimController, _absorpController]),
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _trashScaleAnim.value * (1.0 + (isCancelling ? 0.2 : 0.0)),
+                child: Transform.rotate(
+                  angle: isCancelling
+                      ? math.sin(_animController.value * math.pi * 4) * 0.1
+                      : 0,
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: isCancelling
+                          ? Colors.red.shade400
+                          : Colors.red.shade100,
+                      shape: BoxShape.circle,
+                      boxShadow: isCancelling ? [
+                        BoxShadow(
+                          color: Colors.red.withOpacity(0.4),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                      ] : null,
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // أيقونة السلة
+                        Icon(
+                          isCancelling ? Icons.delete : Icons.delete_outline,
+                          color: isCancelling ? Colors.white : Colors.red.shade400,
+                          size: isCancelling ? 28 : 24,
+                        ),
+                        // تأثير الامتصاص
+                        if (isCancelling)
+                          ...List.generate(3, (index) {
+                            return TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: Duration(milliseconds: 300 + index * 100),
+                              builder: (context, value, _) {
+                                return Transform.scale(
+                                  scale: 1.0 + value * 0.5,
+                                  child: Opacity(
+                                    opacity: (1.0 - value) * 0.5,
+                                    child: Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.red.shade300,
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ),
 
-        const Spacer(),
+        // المحتوى الرئيسي
+        Row(
+          children: [
+            // مساحة للسلة
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: widget.dragOffset < -20 ? 70 : 0,
+            ),
 
-        // نص السحب للإلغاء أو أيقونة الإلغاء
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: isCancelling
-              ? Row(
-                  key: const ValueKey('cancel'),
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.delete_outline, color: Colors.red.shade400, size: 24),
-                    const SizedBox(width: 4),
-                    Text(
-                      'إلغاء',
-                      style: TextStyle(color: Colors.red.shade400, fontWeight: FontWeight.bold),
+            // أيقونة الميكروفون المتحركة
+            AnimatedBuilder(
+              animation: _absorpController,
+              builder: (context, _) {
+                final micOffset = isCancelling ? -30 * _absorpAnim.value : 0.0;
+                final micScale = isCancelling ? 0.5 + 0.5 * _absorpAnim.value : 1.0;
+                final micOpacity = isCancelling ? _absorpAnim.value : 1.0;
+
+                return Transform.translate(
+                  offset: Offset(widget.dragOffset + micOffset, 0),
+                  child: Transform.scale(
+                    scale: micScale,
+                    child: Opacity(
+                      opacity: micOpacity,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isCancelling ? Colors.grey.shade300 : Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // مؤشر التسجيل
+                            AnimatedBuilder(
+                              animation: _animController,
+                              builder: (context, _) {
+                                return Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: isCancelling
+                                        ? Colors.grey
+                                        : Colors.red.withOpacity(0.5 + 0.5 * _animController.value),
+                                    shape: BoxShape.circle,
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 8),
+
+                            // الوقت
+                            Text(
+                              _formatDuration(widget.duration),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: isCancelling ? Colors.grey : Colors.red.shade700,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ],
-                )
-              : Row(
-                  key: const ValueKey('slide'),
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.chevron_left, color: Colors.grey.shade500, size: 20),
-                    Text(
-                      'اسحب للإلغاء',
-                      style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-                    ),
-                  ],
-                ),
+                  ),
+                );
+              },
+            ),
+
+            const Spacer(),
+
+            // نص السحب للإلغاء
+            AnimatedOpacity(
+              opacity: isCancelling ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // أسهم متحركة
+                  AnimatedBuilder(
+                    animation: _animController,
+                    builder: (context, _) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(3, (index) {
+                          final delay = index * 0.2;
+                          final opacity = (((_animController.value + delay) % 1.0) * 2)
+                              .clamp(0.0, 1.0);
+                          return Opacity(
+                            opacity: 1.0 - opacity,
+                            child: Icon(
+                              Icons.chevron_left,
+                              color: Colors.grey.shade400,
+                              size: 18,
+                            ),
+                          );
+                        }),
+                      );
+                    },
+                  ),
+                  Text(
+                    'اسحب للإلغاء',
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
+
+        // رسالة الإلغاء
+        if (isCancelling)
+          Positioned(
+            right: 16,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 200),
+              builder: (context, value, child) {
+                return Opacity(
+                  opacity: value,
+                  child: Transform.scale(
+                    scale: 0.8 + 0.2 * value,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade400,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.cancel, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            'إفلات للإلغاء',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
       ],
     );
   }

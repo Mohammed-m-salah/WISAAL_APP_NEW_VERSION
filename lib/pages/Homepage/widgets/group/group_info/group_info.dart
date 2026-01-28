@@ -137,7 +137,6 @@ class _GroupInfoState extends State<GroupInfo> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Group Image
                   Hero(
                     tag: 'group_image_${_group.id}',
                     child: Image.network(
@@ -150,7 +149,6 @@ class _GroupInfoState extends State<GroupInfo> {
                       ),
                     ),
                   ),
-                  // Gradient overlay
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -163,7 +161,6 @@ class _GroupInfoState extends State<GroupInfo> {
                       ),
                     ),
                   ),
-                  // Group info overlay
                   Positioned(
                     bottom: 16,
                     left: 16,
@@ -219,11 +216,9 @@ class _GroupInfoState extends State<GroupInfo> {
             ),
           ),
 
-          // Content
           SliverToBoxAdapter(
             child: Column(
               children: [
-                // Description
                 if (_group.description != null &&
                     _group.description!.isNotEmpty)
                   _buildSection(
@@ -243,7 +238,6 @@ class _GroupInfoState extends State<GroupInfo> {
                     ),
                   ),
 
-                // Group Settings (for admins)
                 if (_isAdmin)
                   _buildSection(
                     theme,
@@ -278,7 +272,6 @@ class _GroupInfoState extends State<GroupInfo> {
                     ),
                   ),
 
-                // Members section
                 _buildSection(
                   theme,
                   icon: Icons.people,
